@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react';
 import { dashboard } from '@wix/dashboard';
 import { items } from '@wix/data';
-import { httpClient } from '@wix/essentials';
+import { appInstances } from '@wix/app-management';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
 const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
-const DASHBOARD_VERSION = '6.7.0';
+const DASHBOARD_VERSION = '6.8.0';
 const PAGE_SIZE = 10;
 
 type LogoItem = {
@@ -26,12 +26,6 @@ type LogoRow = {
   name: string;
   sortNumber: number | null;
   link: string;
-};
-
-type SiteInfoApiResponse = {
-  collectionId: string;
-  siteId?: string | null;
-  source?: string;
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -700,13 +694,44 @@ async function resolveSiteIdAsync(context = 'unknown') {
     return immediateSiteId;
   }
 
+  const appInstanceSiteId = await resolveSiteIdFromAppInstance(context);
+
+  if (appInstanceSiteId) {
+    return appInstanceSiteId;
+  }
+
   const tokenSiteId = await resolveSiteIdFromDashboardToken(context);
 
   if (tokenSiteId) {
     return tokenSiteId;
   }
 
-  return resolveSiteIdFromBackend(context);
+  return null;
+}
+
+async function resolveSiteIdFromAppInstance(context: string) {
+  try {
+    debugLog('resolve site id app instance:start', {
+      context,
+    });
+
+    const response = await appInstances.getAppInstance();
+    const siteId = response.site?.siteId ?? findSiteIdInRecord(response);
+
+    debugLog('resolve site id app instance:result', {
+      context,
+      hasInstance: Boolean(response.instance),
+      instanceId: response.instance?.instanceId ?? null,
+      hasSite: Boolean(response.site),
+      siteKeys: response.site ? Object.keys(response.site).slice(0, 20) : [],
+      siteId,
+    });
+
+    return siteId;
+  } catch (error) {
+    debugError('resolve site id app instance:failed', error);
+    return null;
+  }
 }
 
 async function resolveSiteIdFromDashboardToken(context: string) {
@@ -736,74 +761,6 @@ async function resolveSiteIdFromDashboardToken(context: string) {
     debugError('resolve site id token:failed', error);
     return null;
   }
-}
-
-async function resolveSiteIdFromBackend(context: string) {
-  try {
-    const apiUrl = buildApiUrl('site-info');
-
-    debugLog('resolve site id backend:start', {
-      context,
-      apiUrl,
-    });
-
-    const response = await fetchJson<SiteInfoApiResponse>('site-info');
-    const siteId = response.siteId ?? null;
-
-    debugLog('resolve site id backend:result', {
-      context,
-      collectionId: response.collectionId,
-      source: response.source,
-      siteId,
-    });
-
-    return siteId;
-  } catch (error) {
-    debugError('resolve site id backend:failed', error);
-    return null;
-  }
-}
-
-function buildApiUrl(path: string, searchParams?: URLSearchParams) {
-  const suffix = searchParams && searchParams.toString() ? `?${searchParams.toString()}` : '';
-  return `${import.meta.env.BASE_API_URL}/${path}${suffix}`;
-}
-
-async function readErrorMessage(response: Response) {
-  const contentType = response.headers.get('content-type') ?? '';
-
-  if (contentType.includes('application/json')) {
-    const payload = (await response.json().catch(() => null)) as { message?: unknown } | null;
-
-    if (payload && typeof payload.message === 'string' && payload.message.trim()) {
-      return payload.message;
-    }
-  }
-
-  const text = await response.text();
-
-  return text.slice(0, 500);
-}
-
-async function fetchJson<T>(path: string, searchParams?: URLSearchParams) {
-  const url = buildApiUrl(path, searchParams);
-  const response = await httpClient.fetchWithAuth(url);
-  const contentType = response.headers.get('content-type') ?? '';
-
-  debugLog('api response', {
-    path,
-    url,
-    ok: response.ok,
-    status: response.status,
-    contentType,
-  });
-
-  if (!response.ok || !contentType.includes('application/json')) {
-    const message = await readErrorMessage(response);
-    throw new Error(message || `Request failed with status ${response.status}`);
-  }
-
-  return (await response.json()) as T;
 }
 
 function parseJwtPayload(token: string) {
