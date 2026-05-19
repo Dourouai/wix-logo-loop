@@ -5,9 +5,8 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
-const CMS_PAGE_ID = 'b29c2439-5544-4896-b0cb-92052dce10ed';
 const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
-const DASHBOARD_VERSION = '6.5.0';
+const DASHBOARD_VERSION = '6.6.0';
 const PAGE_SIZE = 10;
 
 type LogoItem = {
@@ -334,13 +333,13 @@ const DashboardPage: FC = () => {
       return;
     }
 
-    const destination = buildCmsCollectionDestination(COLLECTION_ID);
-
-    debugLog('open cms collection:fallback dashboard navigate', {
-      destination,
+    debugLog('open cms collection:failed, missing site id', {
+      collectionId: COLLECTION_ID,
     });
 
-    navigateToCms(destination, 'Unable to open CMS. Please refresh the dashboard and try again.');
+    dashboard.showToast({
+      message: 'Unable to open CMS because the site ID could not be resolved. Check console logs and refresh the dashboard.',
+    });
   }, [siteId]);
 
   const openCmsItem = useCallback((itemId: string) => {
@@ -372,13 +371,14 @@ const DashboardPage: FC = () => {
       return;
     }
 
-    const destination = buildCmsItemDestination(COLLECTION_ID, itemId);
-
-    debugLog('open cms item:fallback dashboard navigate', {
-      destination,
+    debugLog('open cms item:failed, missing site id', {
+      collectionId: COLLECTION_ID,
+      itemId,
     });
 
-    navigateToCms(destination, 'Unable to open CMS item. Please refresh the dashboard and try again.');
+    dashboard.showToast({
+      message: 'Unable to open CMS item because the site ID could not be resolved. Check console logs and refresh the dashboard.',
+    });
   }, [siteId]);
 
   useEffect(() => {
@@ -646,6 +646,8 @@ function resolveSiteId(context = 'unknown') {
     candidateSources: candidates.map((candidate) => ({
       source: candidate.source,
       hasValue: Boolean(candidate.value),
+      preview: previewDebugValue(candidate.value),
+      extractedSiteId: extractSiteId(candidate.value),
     })),
   });
 
@@ -678,48 +680,22 @@ function buildCmsItemUrl(siteId: string, collectionId: string, itemId: string) {
   return `https://manage.wix.com/dashboard/${siteId}/database/data/${encodeURIComponent(collectionId)}/${encodeURIComponent(itemId)}`;
 }
 
-function buildCmsCollectionDestination(collectionId: string) {
-  return {
-    pageId: CMS_PAGE_ID,
-    relativeUrl: `/data/${encodeURIComponent(collectionId)}`,
-  };
-}
-
-function buildCmsItemDestination(collectionId: string, itemId: string) {
-  return {
-    pageId: CMS_PAGE_ID,
-    relativeUrl: `/data/${encodeURIComponent(collectionId)}/${encodeURIComponent(itemId)}`,
-  };
-}
-
-function navigateToCms(destination: ReturnType<typeof buildCmsCollectionDestination>, errorMessage: string) {
-  try {
-    debugLog('dashboard navigate:start', {
-      destination,
-    });
-
-    dashboard.navigate(destination, {
-      displayMode: 'main',
-      history: 'push',
-    });
-
-    debugLog('dashboard navigate:success', {
-      destination,
-    });
-  } catch (error) {
-    debugError('dashboard navigate:failed', error);
-    dashboard.showToast({
-      message: errorMessage,
-    });
-  }
-}
-
 function debugLog(message: string, payload?: unknown) {
   console.log(`[ZIDER LOGO LOOP] ${message}`, payload ?? '');
 }
 
 function debugError(message: string, error: unknown) {
   console.error(`[ZIDER LOGO LOOP] ${message}`, serializeError(error));
+}
+
+function previewDebugValue(value?: string | null) {
+  if (!value) {
+    return '';
+  }
+
+  const withoutSearch = value.split('?')[0] ?? value;
+
+  return withoutSearch.length > 140 ? `${withoutSearch.slice(0, 140)}...` : withoutSearch;
 }
 
 function serializeError(error: unknown) {
