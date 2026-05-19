@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react';
 import { dashboard } from '@wix/dashboard';
-import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
 const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
+const DASHBOARD_VERSION = '6.4.0';
 const PAGE_SIZE = 10;
 
 type LogoItem = {
@@ -24,6 +25,13 @@ type LogoRow = {
   name: string;
   sortNumber: number | null;
   link: string;
+};
+
+type LogosApiResponse = {
+  collectionId: string;
+  siteId?: string | null;
+  items: LogoItem[];
+  total: number;
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -240,14 +248,12 @@ const DashboardPage: FC = () => {
     setErrorMessage('');
 
     try {
-      const result = await items
-        .query(COLLECTION_ID)
-        .ascending('sortNumber')
-        .skip((nextPage - 1) * PAGE_SIZE)
-        .limit(PAGE_SIZE)
-        .find({ consistentRead: true, returnTotalCount: true });
-
-      const nextTotalCount = result.totalCount ?? result.items.length;
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        limit: String(PAGE_SIZE),
+      });
+      const result = await fetchJson<LogosApiResponse>('logos', params);
+      const nextTotalCount = result.total ?? result.items.length;
       const nextTotalPages = Math.max(1, Math.ceil(nextTotalCount / PAGE_SIZE));
 
       if (nextPage > nextTotalPages && nextTotalCount > 0) {
@@ -255,9 +261,9 @@ const DashboardPage: FC = () => {
         return;
       }
 
-      setRows(result.items.map((item) => mapLogoRow(item as LogoItem)));
+      setRows(result.items.map((item) => mapLogoRow(item)));
       setTotalCount(nextTotalCount);
-      setSiteId((currentSiteId) => currentSiteId ?? resolveSiteId());
+      setSiteId((currentSiteId) => currentSiteId ?? result.siteId ?? resolveSiteId());
     } catch (error) {
       console.warn('[ZIDER LOGO LOOP] Failed to load logo data.', error);
       setRows([]);
@@ -344,7 +350,7 @@ const DashboardPage: FC = () => {
               <header style={styles.topBar}>
                 <div>
                   <h1 style={styles.title}>Zider Logo Loop</h1>
-                  <p style={styles.subtitle}>ZIDER.ink</p>
+                  <p style={styles.subtitle}>ZIDER.ink · V{DASHBOARD_VERSION}</p>
                 </div>
                 <button
                   type="button"
@@ -506,6 +512,36 @@ function resolveLinkUrl(value: unknown): string {
   }
 
   return '';
+}
+
+function buildApiUrl(path: string, searchParams?: URLSearchParams) {
+  const suffix = searchParams && searchParams.toString() ? `?${searchParams.toString()}` : '';
+  return `${import.meta.env.BASE_API_URL}/${path}${suffix}`;
+}
+
+async function readErrorMessage(response: Response) {
+  const contentType = response.headers.get('content-type') ?? '';
+
+  if (contentType.includes('application/json')) {
+    const payload = (await response.json().catch(() => null)) as { message?: unknown } | null;
+
+    if (payload && typeof payload.message === 'string' && payload.message.trim()) {
+      return payload.message;
+    }
+  }
+
+  return response.text();
+}
+
+async function fetchJson<T>(path: string, searchParams?: URLSearchParams) {
+  const response = await httpClient.fetchWithAuth(buildApiUrl(path, searchParams));
+
+  if (!response.ok) {
+    const message = await readErrorMessage(response);
+    throw new Error(message || `Request failed with status ${response.status}`);
+  }
+
+  return (await response.json()) as T;
 }
 
 function extractSiteId(value?: string | null) {

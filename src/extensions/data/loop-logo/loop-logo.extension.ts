@@ -2,7 +2,7 @@ import type { DataCollection } from '@wix/astro/builders';
 import { extensions } from '@wix/astro/builders';
 
 const loopLogoCollection: DataCollection = {
-  idSuffix: 'loop-logo',
+  idSuffix: 'database',
   displayName: 'Loop logo',
   displayField: 'title',
   dataPermissions: {
