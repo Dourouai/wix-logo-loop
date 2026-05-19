@@ -5,101 +5,9 @@ import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
+const CMS_PAGE_ID = '6513755b-2a3b-45b9-8172-99c16e00dfde';
+const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
 const PAGE_SIZE = 10;
-
-function extractSiteId(value?: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  const dashboardMatch = value.match(/\/dashboard\/([0-9a-f-]{36})(?:\/|$)/i);
-
-  if (dashboardMatch?.[1]) {
-    return dashboardMatch[1];
-  }
-
-  const editorMatch = value.match(/\/editor\/([0-9a-f-]{36})(?:\/|$)/i);
-  return editorMatch?.[1] ?? null;
-}
-
-function parseEncodedJson<T extends Record<string, unknown>>(value?: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(decodeURIComponent(value)) as T;
-  } catch {
-    return null;
-  }
-}
-
-function readQueryParamSiteId() {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const queryParams = new URLSearchParams(window.location.search);
-  const siteInfo = parseEncodedJson<Record<string, unknown>>(queryParams.get('siteInfo'));
-  const directSiteId = queryParams.get('siteId') ?? queryParams.get('metaSiteId');
-
-  return (
-    (typeof siteInfo?.siteId === 'string' ? siteInfo.siteId : null) ??
-    (typeof siteInfo?.metaSiteId === 'string' ? siteInfo.metaSiteId : null) ??
-    extractSiteId(typeof siteInfo?.editorUrl === 'string' ? siteInfo.editorUrl : null) ??
-    directSiteId
-  );
-}
-
-function readTopLocationHref() {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  try {
-    return window.top?.location.href ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function resolveSiteId() {
-  const siteInfo = (dashboard.getSiteInfo?.() ?? null) as
-    | {
-        editorUrl?: string;
-        siteUrl?: string;
-        siteId?: string;
-        metaSiteId?: string;
-      }
-    | null;
-  const candidates = [
-    siteInfo?.siteId,
-    siteInfo?.metaSiteId,
-    readQueryParamSiteId(),
-    siteInfo?.editorUrl,
-    typeof document !== 'undefined' ? document.referrer : null,
-    readTopLocationHref(),
-    typeof window !== 'undefined' ? window.location.href : null,
-  ];
-
-  for (const candidate of candidates) {
-    const siteId = extractSiteId(candidate);
-
-    if (siteId) {
-      return siteId;
-    }
-  }
-
-  return null;
-}
-
-function buildCmsCollectionUrl(siteId: string, collectionId: string) {
-  return `https://manage.wix.com/dashboard/${siteId}/database/data/${encodeURIComponent(collectionId)}`;
-}
-
-function buildCmsItemUrl(siteId: string, collectionId: string, itemId: string) {
-  return `${buildCmsCollectionUrl(siteId, collectionId)}/${encodeURIComponent(itemId)}`;
-}
 
 type LogoItem = {
   _id?: string;
@@ -107,7 +15,7 @@ type LogoItem = {
   title?: string;
   description?: string;
   sortNumber?: number;
-  link?: string;
+  link?: unknown;
 };
 
 type LogoRow = {
@@ -117,6 +25,11 @@ type LogoRow = {
   name: string;
   sortNumber: number | null;
   link: string;
+};
+
+type DashboardDestination = {
+  pageId: string;
+  relativeUrl?: string;
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -214,24 +127,28 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
     fontWeight: 500,
     textAlign: 'left',
-    padding: '13px 28px',
+    padding: '13px 20px',
   },
   tableCell: {
     borderTop: '1px solid #e1e5ea',
     color: '#10172f',
     fontSize: 16,
-    padding: '18px 28px',
+    padding: '16px 20px',
     verticalAlign: 'middle',
   },
+  numberCell: {
+    color: '#2f3b58',
+    fontVariantNumeric: 'tabular-nums',
+  },
   logoCell: {
-    height: 48,
+    height: 54,
     display: 'flex',
     alignItems: 'center',
   },
   logoImage: {
     display: 'block',
-    maxWidth: 160,
-    maxHeight: 48,
+    maxWidth: 170,
+    maxHeight: 54,
     objectFit: 'contain',
   },
   logoPlaceholder: {
@@ -248,6 +165,7 @@ const styles: Record<string, CSSProperties> = {
   link: {
     color: '#2f3b58',
     textDecoration: 'underline',
+    maxWidth: 260,
     display: 'block',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -354,29 +272,14 @@ const DashboardPage: FC = () => {
     }
   }, []);
 
-  const openCmsCollection = useCallback(() => {
-    const siteId = resolveSiteId();
-
-    if (!siteId) {
-      dashboard.showToast({
-        message: 'Unable to open CMS. Please refresh the dashboard and try again.',
-      });
-      return;
-    }
-
-    window.open(buildCmsCollectionUrl(siteId, COLLECTION_ID), '_blank', 'noopener,noreferrer');
+  const openCmsCollection = useCallback(async () => {
+    await openDashboardDestination(
+      buildCmsCollectionDestination(COLLECTION_ID),
+      'Unable to open CMS. Please refresh the dashboard and try again.',
+    );
   }, []);
 
-  const openCmsItem = useCallback((itemId: string) => {
-    const siteId = resolveSiteId();
-
-    if (!siteId) {
-      dashboard.showToast({
-        message: 'Unable to open CMS item. Please refresh the dashboard and try again.',
-      });
-      return;
-    }
-
+  const openCmsItem = useCallback(async (itemId: string) => {
     if (!itemId) {
       dashboard.showToast({
         message: 'This row is missing its CMS item ID. Please refresh the dashboard and try again.',
@@ -384,7 +287,10 @@ const DashboardPage: FC = () => {
       return;
     }
 
-    window.open(buildCmsItemUrl(siteId, COLLECTION_ID, itemId), '_blank', 'noopener,noreferrer');
+    await openDashboardDestination(
+      buildCmsItemDestination(COLLECTION_ID, itemId),
+      'Unable to open CMS item. Please refresh the dashboard and try again.',
+    );
   }, []);
 
   useEffect(() => {
@@ -408,7 +314,7 @@ const DashboardPage: FC = () => {
                 <button
                   type="button"
                   style={styles.helpButton}
-                  onClick={() => console.log('[ZIDER LOGO LOOP] Help clicked')}
+                  onClick={() => window.open(HELP_URL, '_blank', 'noopener,noreferrer')}
                 >
                   Help
                 </button>
@@ -435,11 +341,11 @@ const DashboardPage: FC = () => {
                   <table style={styles.table}>
                     <thead style={styles.tableHead}>
                       <tr>
-                        <th style={{ ...styles.headerCell, width: '26%' }}>Logo</th>
-                        <th style={{ ...styles.headerCell, width: '20%' }}>Name</th>
-                        <th style={{ ...styles.headerCell, width: '13%' }}>Sort No.</th>
+                        <th style={{ ...styles.headerCell, width: 92 }}>Sort No.</th>
+                        <th style={{ ...styles.headerCell, width: 190 }}>Name</th>
+                        <th style={{ ...styles.headerCell, width: 230 }}>Logo</th>
                         <th style={styles.headerCell}>Link</th>
-                        <th style={{ ...styles.headerCell, width: 130 }}>Action</th>
+                        <th style={{ ...styles.headerCell, width: 140 }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -464,6 +370,10 @@ const DashboardPage: FC = () => {
                       ) : (
                         rows.map((item) => (
                           <tr key={item.id}>
+                            <td style={{ ...styles.tableCell, ...styles.numberCell }}>
+                              {item.sortNumber ?? <span style={styles.mutedText}>-</span>}
+                            </td>
+                            <td style={styles.tableCell}>{item.name}</td>
                             <td style={styles.tableCell}>
                               <div style={styles.logoCell}>
                                 {item.imageSrc ? (
@@ -473,8 +383,6 @@ const DashboardPage: FC = () => {
                                 )}
                               </div>
                             </td>
-                            <td style={styles.tableCell}>{item.name}</td>
-                            <td style={styles.tableCell}>{item.sortNumber ?? <span style={styles.mutedText}>-</span>}</td>
                             <td style={styles.tableCell}>
                               {item.link ? (
                                 <a style={styles.link} href={item.link} target="_blank" rel="noreferrer">
@@ -542,8 +450,62 @@ function mapLogoRow(item: LogoItem): LogoRow {
     imageSrc: resolveImageUrl(item.image),
     name: item.title || item.description || 'Untitled logo',
     sortNumber: typeof item.sortNumber === 'number' ? item.sortNumber : null,
-    link: typeof item.link === 'string' ? item.link : '',
+    link: resolveLinkUrl(item.link),
   };
+}
+
+function resolveLinkUrl(value: unknown): string {
+  if (!value) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const rawUrl = record.url || record.href || record.link || record.value;
+
+    return typeof rawUrl === 'string' ? rawUrl : '';
+  }
+
+  return '';
+}
+
+function buildCmsCollectionDestination(collectionId: string): DashboardDestination {
+  return {
+    pageId: CMS_PAGE_ID,
+    relativeUrl: `/data/${encodeURIComponent(collectionId)}`,
+  };
+}
+
+function buildCmsItemDestination(collectionId: string, itemId: string): DashboardDestination {
+  return {
+    pageId: CMS_PAGE_ID,
+    relativeUrl: `/data/${encodeURIComponent(collectionId)}/${encodeURIComponent(itemId)}`,
+  };
+}
+
+async function openDashboardDestination(destination: DashboardDestination, errorMessage: string) {
+  try {
+    const url = await dashboard.getPageUrl(destination);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (error) {
+    console.warn('[ZIDER LOGO LOOP] Failed to open dashboard destination.', error);
+
+    try {
+      dashboard.navigate(destination, {
+        displayMode: 'main',
+        history: 'push',
+      });
+    } catch (navigateError) {
+      console.warn('[ZIDER LOGO LOOP] Failed to navigate dashboard destination.', navigateError);
+      dashboard.showToast({
+        message: errorMessage,
+      });
+    }
+  }
 }
 
 function resolveImageUrl(value: unknown): string {
