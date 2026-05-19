@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react';
 import { dashboard } from '@wix/dashboard';
 import { items } from '@wix/data';
+import { httpClient } from '@wix/essentials';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
 const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
-const DASHBOARD_VERSION = '6.6.0';
+const DASHBOARD_VERSION = '6.7.0';
 const PAGE_SIZE = 10;
 
 type LogoItem = {
@@ -25,6 +26,12 @@ type LogoRow = {
   name: string;
   sortNumber: number | null;
   link: string;
+};
+
+type SiteInfoApiResponse = {
+  collectionId: string;
+  siteId?: string | null;
+  source?: string;
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -277,6 +284,11 @@ const DashboardPage: FC = () => {
       setRows(result.items.map((item) => mapLogoRow(item as LogoItem)));
       setTotalCount(nextTotalCount);
       setSiteId((currentSiteId) => currentSiteId ?? resolveSiteId('loadPage'));
+      void resolveSiteIdAsync('loadPage:async').then((resolvedSiteId) => {
+        if (resolvedSiteId) {
+          setSiteId((currentSiteId) => currentSiteId ?? resolvedSiteId);
+        }
+      });
     } catch (error) {
       debugError('load logo data:failed', error);
       setRows([]);
@@ -299,6 +311,14 @@ const DashboardPage: FC = () => {
       return;
     }
 
+    let isCancelled = false;
+
+    void resolveSiteIdAsync('effect:async').then((resolvedSiteId) => {
+      if (!isCancelled && resolvedSiteId) {
+        setSiteId(resolvedSiteId);
+      }
+    });
+
     const timeoutId = window.setTimeout(() => {
       const resolvedSiteId = resolveSiteId('effect:delayed');
 
@@ -308,12 +328,13 @@ const DashboardPage: FC = () => {
     }, 400);
 
     return () => {
+      isCancelled = true;
       window.clearTimeout(timeoutId);
     };
   }, [siteId]);
 
-  const openCmsCollection = useCallback(() => {
-    const resolvedSiteId = siteId ?? resolveSiteId('openCmsCollection');
+  const openCmsCollection = useCallback(async () => {
+    const resolvedSiteId = siteId ?? await resolveSiteIdAsync('openCmsCollection');
 
     debugLog('open cms collection:start', {
       collectionId: COLLECTION_ID,
@@ -342,7 +363,7 @@ const DashboardPage: FC = () => {
     });
   }, [siteId]);
 
-  const openCmsItem = useCallback((itemId: string) => {
+  const openCmsItem = useCallback(async (itemId: string) => {
     if (!itemId) {
       dashboard.showToast({
         message: 'This row is missing its CMS item ID. Please refresh the dashboard and try again.',
@@ -350,7 +371,7 @@ const DashboardPage: FC = () => {
       return;
     }
 
-    const resolvedSiteId = siteId ?? resolveSiteId('openCmsItem');
+    const resolvedSiteId = siteId ?? await resolveSiteIdAsync('openCmsItem');
 
     debugLog('open cms item:start', {
       collectionId: COLLECTION_ID,
@@ -668,6 +689,184 @@ function resolveSiteId(context = 'unknown') {
   debugLog('resolve site id:failed', {
     context,
   });
+
+  return null;
+}
+
+async function resolveSiteIdAsync(context = 'unknown') {
+  const immediateSiteId = resolveSiteId(`${context}:sync`);
+
+  if (immediateSiteId) {
+    return immediateSiteId;
+  }
+
+  const tokenSiteId = await resolveSiteIdFromDashboardToken(context);
+
+  if (tokenSiteId) {
+    return tokenSiteId;
+  }
+
+  return resolveSiteIdFromBackend(context);
+}
+
+async function resolveSiteIdFromDashboardToken(context: string) {
+  const getAccessToken = (dashboard as typeof dashboard & { getAccessToken?: () => Promise<string> }).getAccessToken;
+
+  if (!getAccessToken) {
+    debugLog('resolve site id token:unavailable', {
+      context,
+    });
+    return null;
+  }
+
+  try {
+    const token = await getAccessToken();
+    const payload = parseJwtPayload(token);
+    const siteId = findSiteIdInRecord(payload);
+
+    debugLog('resolve site id token:result', {
+      context,
+      hasToken: Boolean(token),
+      payloadKeys: payload ? Object.keys(payload).slice(0, 20) : [],
+      siteId,
+    });
+
+    return siteId;
+  } catch (error) {
+    debugError('resolve site id token:failed', error);
+    return null;
+  }
+}
+
+async function resolveSiteIdFromBackend(context: string) {
+  try {
+    const apiUrl = buildApiUrl('site-info');
+
+    debugLog('resolve site id backend:start', {
+      context,
+      apiUrl,
+    });
+
+    const response = await fetchJson<SiteInfoApiResponse>('site-info');
+    const siteId = response.siteId ?? null;
+
+    debugLog('resolve site id backend:result', {
+      context,
+      collectionId: response.collectionId,
+      source: response.source,
+      siteId,
+    });
+
+    return siteId;
+  } catch (error) {
+    debugError('resolve site id backend:failed', error);
+    return null;
+  }
+}
+
+function buildApiUrl(path: string, searchParams?: URLSearchParams) {
+  const suffix = searchParams && searchParams.toString() ? `?${searchParams.toString()}` : '';
+  return `${import.meta.env.BASE_API_URL}/${path}${suffix}`;
+}
+
+async function readErrorMessage(response: Response) {
+  const contentType = response.headers.get('content-type') ?? '';
+
+  if (contentType.includes('application/json')) {
+    const payload = (await response.json().catch(() => null)) as { message?: unknown } | null;
+
+    if (payload && typeof payload.message === 'string' && payload.message.trim()) {
+      return payload.message;
+    }
+  }
+
+  const text = await response.text();
+
+  return text.slice(0, 500);
+}
+
+async function fetchJson<T>(path: string, searchParams?: URLSearchParams) {
+  const url = buildApiUrl(path, searchParams);
+  const response = await httpClient.fetchWithAuth(url);
+  const contentType = response.headers.get('content-type') ?? '';
+
+  debugLog('api response', {
+    path,
+    url,
+    ok: response.ok,
+    status: response.status,
+    contentType,
+  });
+
+  if (!response.ok || !contentType.includes('application/json')) {
+    const message = await readErrorMessage(response);
+    throw new Error(message || `Request failed with status ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+function parseJwtPayload(token: string) {
+  const payloadPart = token.split('.')[1];
+
+  if (!payloadPart) {
+    return null;
+  }
+
+  try {
+    const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const json = new TextDecoder().decode(bytes);
+
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function findSiteIdInRecord(value: unknown, depth = 0): string | null {
+  if (!value || depth > 3) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    return extractSiteId(value);
+  }
+
+  if (typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const directCandidates = [
+    record.siteId,
+    record.site_id,
+    record.metaSiteId,
+    record.metasiteId,
+    record.metasite_id,
+  ];
+
+  for (const candidate of directCandidates) {
+    const siteId = findSiteIdInRecord(candidate, depth + 1);
+
+    if (siteId) {
+      return siteId;
+    }
+  }
+
+  for (const [key, candidate] of Object.entries(record)) {
+    if (!/site|instance|context/i.test(key)) {
+      continue;
+    }
+
+    const siteId = findSiteIdInRecord(candidate, depth + 1);
+
+    if (siteId) {
+      return siteId;
+    }
+  }
 
   return null;
 }
