@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root {
+    --logo-height: 80px;
+    --gap: 30px;
+    --mask-color: #ffffff;
+  }
+
+  body { margin:0; padding:0; overflow:hidden; }
+
+  #logosContainer {
+    position: relative;
+    width: 100%;
+    height: 100%; 
+    min-height: 20px; /* 确保有一个最小高度 */
+
+    display: flex; /* 垂直居中 */
+    align-items: center; 
+    overflow: hidden;
+    /* 关键：防止父容器导致换行 */
+    white-space: nowrap; 
+  }
+
+  /* 左右渐变遮罩 */
+  #logosContainer:before,
+  #logosContainer:after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 40px;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+  #logosContainer:before {
+    left: 0;
+    background: linear-gradient(to right, var(--mask-color), rgba(255,255,255,0));
+  }
+  #logosContainer:after {
+    right: 0;
+    background: linear-gradient(to left, var(--mask-color), rgba(255,255,255,0));
+  }
+
+  /* 滚动轨道 */
+  #logoItems {
+    display: flex;
+    align-items: center;
+    /* ⭐ 关键修复 1：强制不换行 */
+    flex-wrap: nowrap;
+    /* ⭐ 关键修复 2：让宽度根据内容自动撑开，而不是受限于父容器 */
+    width: max-content; 
+    will-change: transform;
+  }
+
+  .logo-wrapper {
+    display: flex;
+    align-items: center;
+    /* ⭐ 关键修复 3：禁止压缩 */
+    flex-shrink: 0; 
+    margin-right: var(--gap);
+    height: var(--logo-height); /* 固定高度 */
+  }
+
+  .logo-wrapper img {
+    height: 100%; /* 撑满 wrapper 高度 */
+    width: auto;
+    object-fit: contain;
+    cursor: default;
+    transition: filter 0.3s ease, opacity 0.3s ease;
+    display: block; /* 防止图片底部留白 */
+  }
+
+  /* 灰色模式 */
+  .gray-mode img { filter: grayscale(100%); }
+  .gray-mode img:hover { filter: grayscale(0%); }
+  
+  /* 普通 hover */
+  .logo-wrapper img:hover { opacity: 1.0; }
+
+  @keyframes slides {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+<div id="logosContainer">
+  <div id="logoItems"></div>
+</div>
+
+<script>
+const container = document.getElementById("logosContainer");
+const track = document.getElementById("logoItems");
+const rootStyle = document.documentElement.style;
+let currentConfig = { pauseOnHover: true };
+let cloneDone = false;
+
+// ------------------------------
+// WIX MESSAGE LISTENER
+// ------------------------------
+window.onmessage = (event) => {
+  if (event.data && event.data.type === 'update') {
+    const { config, images } = event.data;
+    currentConfig = config;
+    initMarquee(config, images);
+  }
+};
+
+// ------------------------------
+// DELEGATED CLICK
+// ------------------------------
+track.addEventListener("click", (e) => {
+  const img = e.target.closest("img");
+  if (!img) return;
+  const link = img.dataset.link;
+  if (!link || !currentConfig.links) return;
+  window.open(link, "_blank");
+  window.parent.postMessage({ type: "logoClick", link }, "*");
+});
+
+// ------------------------------
+// INIT
+// ------------------------------
+function initMarquee(config, images) {
+  rootStyle.setProperty('--logo-height', config.height || '80px');
+  rootStyle.setProperty('--gap', (config.gap || 30) + 'px');
+  
+  if (config.hiddenMaskColor) {
+    rootStyle.setProperty('--mask-color', 'rgba(255,255,255,0)');
+  } else {
+    rootStyle.setProperty('--mask-color', config.maskColor || '#ffffff');
+  }
+
+  if (config.grayMode) {
+    container.classList.add("gray-mode");
+  } else {
+    container.classList.remove("gray-mode");
+  }
+
+  track.innerHTML = '';
+  track.style.animation = 'none';
+  cloneDone = false;
+
+  if (!images || images.length === 0) return;
+
+  let loadedCount = 0;
+
+  images.forEach(imgData => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'logo-wrapper';
+
+    const img = document.createElement('img');
+    img.src = imgData.src;
+    img.alt = imgData.alt || 'logo';
+    if (imgData.link) img.dataset.link = imgData.link;
+
+    img.style.cursor = (config.links && imgData.link) ? 'pointer' : 'default';
+
+    wrapper.appendChild(img);
+    track.appendChild(wrapper);
+
+    // 图片加载检测
+    const checkLoad = () => {
+      loadedCount++;
+      if (loadedCount === images.length && !cloneDone) {
+        // 所有图片加载完毕，开始计算和克隆
+        startCloningLogic(config.speed || 60, config.direction || 'left');
+      }
+    };
+
+    if (img.complete) {
+      checkLoad();
+    } else {
+      img.onload = checkLoad;
+      img.onerror = checkLoad;
+    }
+  });
+
+  // Hover Pause Logic
+  if (config.pauseOnHover) {
+    container.onmouseenter = () => track.style.animationPlayState = 'paused';
+    container.onmouseleave = () => track.style.animationPlayState = 'running';
+  } else {
+    container.onmouseenter = null;
+    container.onmouseleave = null;
+  }
+}
+
+// ------------------------------
+// CLONING LOGIC (修复版)
+// ------------------------------
+function startCloningLogic(speed, direction) {
+  // ⭐ 关键修复 4：如果在 Wix iframe 加载初期 offsetWidth 为 0，则使用 window 宽度兜底
+  const containerWidth = container.offsetWidth || window.innerWidth || 1000;
+
+  function getTrackWidth() {
+    // 使用 scrollWidth 获取真实内容宽度，这比累加 children 更准确
+    return track.scrollWidth;
+  }
+
+  let totalWidth = getTrackWidth();
+  let loopLimit = 10; // 防止死循环
+
+  // 确保内容宽度至少是容器的 2 倍以上，才能保证无缝滚动
+  // 这里用 3 倍是为了保险（左中右）
+  while (totalWidth < containerWidth * 2 && loopLimit > 0) {
+    // 每次把当前的子元素全部克隆一遍，保持队列顺序
+    const children = Array.from(track.children);
+    children.forEach(child => {
+        track.appendChild(child.cloneNode(true));
+    });
+    
+    totalWidth = getTrackWidth();
+    loopLimit--;
+  }
+  
+  // 如果还是不够宽（极端情况），强行再复制一组
+  if(loopLimit > 0) {
+     const children = Array.from(track.children);
+     children.forEach(child => track.appendChild(child.cloneNode(true)));
+  }
+
+  // 计算动画数据
+  // 因为 slides 动画是 translateX(-50%)，所以我们只需要算全长的一半
+  // 逻辑是：滚完一半的内容，瞬间跳回 0，因为前后两半是一模一样的，所以肉眼看不出
+  const distanceToMove = track.scrollWidth / 2;
+  
+  // 速度计算：距离 / 速度系数 = 时间
+  // 这里假设 speed 是 "像素/秒" 或者是某种相对值，根据你的 config.speed 调整
+  // 如果 config.speed 是 60 (意味着 60s 滚完？还是别的)，这里做个简单的自适应
+  // 通常 duration = distance / pxPerSecond
+  // 假设 config.speed 代表“滚动一屏需要多少秒”或者单纯的一个系数
+  
+  // 为了保持一致性，我们直接用 CSS animation duration
+  // 这里的 speed 逻辑建议：数值越大越快 -> time = distance / speed
+  // 或者数值越大越慢 (duration) -> time = speed
+  // 你的原逻辑是: duration = distanceToMove / speed; 
+  // 假设 distance 是 2000px，speed 是 60， duration = 33秒。这看起来很合理。
+  
+  const duration = distanceToMove / speed;
+
+  track.style.animationName = 'slides';
+  track.style.animationDuration = `${duration}s`;
+  track.style.animationTimingFunction = 'linear';
+  track.style.animationIterationCount = 'infinite';
+  track.style.animationDirection = direction === 'right' ? 'reverse' : 'normal';
+  track.style.animationPlayState = 'running';
+
+  cloneDone = true;
+}
+// 在脚本最后添加：
+window.onload = () => {
+  // 通知 Wix 页面已加载完毕
+  window.parent.postMessage({ type: "ready" }, "*");
+};
+  // ⭐ 关键：在脚本最后添加主动通知机制
+function notifyWixReady() {
+    window.parent.postMessage({ type: "ready" }, "*");
+}
+
+// 确保页面加载完成后立即通知
+if (document.readyState === "complete") {
+    notifyWixReady();
+} else {
+    window.addEventListener("load", notifyWixReady);
+}
+
+// 针对编辑器环境的额外补救：每隔1秒发一次 ready，直到收到数据为止（可选）
+const retryReady = setInterval(() => {
+    if (!cloneDone) { // 如果还没克隆完成，说明还没收到数据
+        notifyWixReady();
+    } else {
+        clearInterval(retryReady);
+    }
+}, 1000);
+</script>
+</body>
+</html>
