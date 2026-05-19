@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FC } from 'react';
 import { dashboard } from '@wix/dashboard';
-import { httpClient } from '@wix/essentials';
+import { items } from '@wix/data';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import '@wix/design-system/styles.global.css';
 
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
+const CMS_PAGE_ID = 'b29c2439-5544-4896-b0cb-92052dce10ed';
 const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
-const DASHBOARD_VERSION = '6.4.0';
+const DASHBOARD_VERSION = '6.5.0';
 const PAGE_SIZE = 10;
 
 type LogoItem = {
@@ -25,13 +26,6 @@ type LogoRow = {
   name: string;
   sortNumber: number | null;
   link: string;
-};
-
-type LogosApiResponse = {
-  collectionId: string;
-  siteId?: string | null;
-  items: LogoItem[];
-  total: number;
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -248,24 +242,44 @@ const DashboardPage: FC = () => {
     setErrorMessage('');
 
     try {
-      const params = new URLSearchParams({
-        page: String(nextPage),
-        limit: String(PAGE_SIZE),
+      debugLog('load logo data:start', {
+        collectionId: COLLECTION_ID,
+        page: nextPage,
+        pageSize: PAGE_SIZE,
       });
-      const result = await fetchJson<LogosApiResponse>('logos', params);
-      const nextTotalCount = result.total ?? result.items.length;
+
+      const result = await items
+        .query(COLLECTION_ID)
+        .ascending('sortNumber')
+        .skip((nextPage - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+        .find({ consistentRead: true, returnTotalCount: true });
+
+      const nextTotalCount = result.totalCount ?? result.items.length;
       const nextTotalPages = Math.max(1, Math.ceil(nextTotalCount / PAGE_SIZE));
 
+      debugLog('load logo data:success', {
+        collectionId: COLLECTION_ID,
+        receivedItems: result.items.length,
+        totalCount: nextTotalCount,
+        page: nextPage,
+        totalPages: nextTotalPages,
+      });
+
       if (nextPage > nextTotalPages && nextTotalCount > 0) {
+        debugLog('load logo data:page overflow, redirecting page', {
+          requestedPage: nextPage,
+          nextTotalPages,
+        });
         setPage(nextTotalPages);
         return;
       }
 
-      setRows(result.items.map((item) => mapLogoRow(item)));
+      setRows(result.items.map((item) => mapLogoRow(item as LogoItem)));
       setTotalCount(nextTotalCount);
-      setSiteId((currentSiteId) => currentSiteId ?? result.siteId ?? resolveSiteId());
+      setSiteId((currentSiteId) => currentSiteId ?? resolveSiteId('loadPage'));
     } catch (error) {
-      console.warn('[ZIDER LOGO LOOP] Failed to load logo data.', error);
+      debugError('load logo data:failed', error);
       setRows([]);
       setTotalCount(0);
       setErrorMessage('Logo data could not be loaded. Please try again later.');
@@ -279,7 +293,7 @@ const DashboardPage: FC = () => {
       return;
     }
 
-    const nextSiteId = resolveSiteId();
+    const nextSiteId = resolveSiteId('effect:initial');
 
     if (nextSiteId) {
       setSiteId(nextSiteId);
@@ -287,7 +301,7 @@ const DashboardPage: FC = () => {
     }
 
     const timeoutId = window.setTimeout(() => {
-      const resolvedSiteId = resolveSiteId();
+      const resolvedSiteId = resolveSiteId('effect:delayed');
 
       if (resolvedSiteId) {
         setSiteId(resolvedSiteId);
@@ -300,17 +314,33 @@ const DashboardPage: FC = () => {
   }, [siteId]);
 
   const openCmsCollection = useCallback(() => {
-    const resolvedSiteId = siteId ?? resolveSiteId();
+    const resolvedSiteId = siteId ?? resolveSiteId('openCmsCollection');
 
-    if (!resolvedSiteId) {
-      dashboard.showToast({
-        message: 'Unable to open CMS. Please refresh the dashboard and try again.',
+    debugLog('open cms collection:start', {
+      collectionId: COLLECTION_ID,
+      cachedSiteId: siteId,
+      resolvedSiteId,
+    });
+
+    if (resolvedSiteId) {
+      setSiteId(resolvedSiteId);
+      const cmsUrl = buildCmsCollectionUrl(resolvedSiteId, COLLECTION_ID);
+
+      debugLog('open cms collection:url', {
+        cmsUrl,
       });
+
+      window.open(cmsUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    setSiteId(resolvedSiteId);
-    window.open(buildCmsCollectionUrl(resolvedSiteId, COLLECTION_ID), '_blank', 'noopener,noreferrer');
+    const destination = buildCmsCollectionDestination(COLLECTION_ID);
+
+    debugLog('open cms collection:fallback dashboard navigate', {
+      destination,
+    });
+
+    navigateToCms(destination, 'Unable to open CMS. Please refresh the dashboard and try again.');
   }, [siteId]);
 
   const openCmsItem = useCallback((itemId: string) => {
@@ -321,17 +351,34 @@ const DashboardPage: FC = () => {
       return;
     }
 
-    const resolvedSiteId = siteId ?? resolveSiteId();
+    const resolvedSiteId = siteId ?? resolveSiteId('openCmsItem');
 
-    if (!resolvedSiteId) {
-      dashboard.showToast({
-        message: 'Unable to open CMS item. Please refresh the dashboard and try again.',
+    debugLog('open cms item:start', {
+      collectionId: COLLECTION_ID,
+      itemId,
+      cachedSiteId: siteId,
+      resolvedSiteId,
+    });
+
+    if (resolvedSiteId) {
+      setSiteId(resolvedSiteId);
+      const cmsUrl = buildCmsItemUrl(resolvedSiteId, COLLECTION_ID, itemId);
+
+      debugLog('open cms item:url', {
+        cmsUrl,
       });
+
+      window.open(cmsUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    setSiteId(resolvedSiteId);
-    window.open(buildCmsItemUrl(resolvedSiteId, COLLECTION_ID, itemId), '_blank', 'noopener,noreferrer');
+    const destination = buildCmsItemDestination(COLLECTION_ID, itemId);
+
+    debugLog('open cms item:fallback dashboard navigate', {
+      destination,
+    });
+
+    navigateToCms(destination, 'Unable to open CMS item. Please refresh the dashboard and try again.');
   }, [siteId]);
 
   useEffect(() => {
@@ -514,36 +561,6 @@ function resolveLinkUrl(value: unknown): string {
   return '';
 }
 
-function buildApiUrl(path: string, searchParams?: URLSearchParams) {
-  const suffix = searchParams && searchParams.toString() ? `?${searchParams.toString()}` : '';
-  return `${import.meta.env.BASE_API_URL}/${path}${suffix}`;
-}
-
-async function readErrorMessage(response: Response) {
-  const contentType = response.headers.get('content-type') ?? '';
-
-  if (contentType.includes('application/json')) {
-    const payload = (await response.json().catch(() => null)) as { message?: unknown } | null;
-
-    if (payload && typeof payload.message === 'string' && payload.message.trim()) {
-      return payload.message;
-    }
-  }
-
-  return response.text();
-}
-
-async function fetchJson<T>(path: string, searchParams?: URLSearchParams) {
-  const response = await httpClient.fetchWithAuth(buildApiUrl(path, searchParams));
-
-  if (!response.ok) {
-    const message = await readErrorMessage(response);
-    throw new Error(message || `Request failed with status ${response.status}`);
-  }
-
-  return (await response.json()) as T;
-}
-
 function extractSiteId(value?: string | null) {
   if (!value) {
     return null;
@@ -604,7 +621,7 @@ function readTopLocationHref() {
   }
 }
 
-function resolveSiteId() {
+function resolveSiteId(context = 'unknown') {
   const siteInfo = (dashboard.getSiteInfo?.() ?? null) as
     | {
         editorUrl?: string;
@@ -613,23 +630,42 @@ function resolveSiteId() {
         metaSiteId?: string;
       }
     | null;
-  const candidates = [
-    siteInfo?.siteId,
-    siteInfo?.metaSiteId,
-    readQueryParamSiteId(),
-    siteInfo?.editorUrl,
-    typeof document !== 'undefined' ? document.referrer : null,
-    readTopLocationHref(),
-    typeof window !== 'undefined' ? window.location.href : null,
+  const candidates: Array<{ source: string; value?: string | null }> = [
+    { source: 'dashboard.getSiteInfo.siteId', value: siteInfo?.siteId },
+    { source: 'dashboard.getSiteInfo.metaSiteId', value: siteInfo?.metaSiteId },
+    { source: 'query.siteInfo/siteId', value: readQueryParamSiteId() },
+    { source: 'dashboard.getSiteInfo.editorUrl', value: siteInfo?.editorUrl },
+    { source: 'document.referrer', value: typeof document !== 'undefined' ? document.referrer : null },
+    { source: 'window.top.location.href', value: readTopLocationHref() },
+    { source: 'window.location.href', value: typeof window !== 'undefined' ? window.location.href : null },
   ];
 
+  debugLog('resolve site id:start', {
+    context,
+    hasSiteInfo: Boolean(siteInfo),
+    candidateSources: candidates.map((candidate) => ({
+      source: candidate.source,
+      hasValue: Boolean(candidate.value),
+    })),
+  });
+
   for (const candidate of candidates) {
-    const siteId = extractSiteId(candidate);
+    const siteId = extractSiteId(candidate.value);
 
     if (siteId) {
+      debugLog('resolve site id:success', {
+        context,
+        source: candidate.source,
+        siteId,
+      });
+
       return siteId;
     }
   }
+
+  debugLog('resolve site id:failed', {
+    context,
+  });
 
   return null;
 }
@@ -640,6 +676,62 @@ function buildCmsCollectionUrl(siteId: string, collectionId: string) {
 
 function buildCmsItemUrl(siteId: string, collectionId: string, itemId: string) {
   return `https://manage.wix.com/dashboard/${siteId}/database/data/${encodeURIComponent(collectionId)}/${encodeURIComponent(itemId)}`;
+}
+
+function buildCmsCollectionDestination(collectionId: string) {
+  return {
+    pageId: CMS_PAGE_ID,
+    relativeUrl: `/data/${encodeURIComponent(collectionId)}`,
+  };
+}
+
+function buildCmsItemDestination(collectionId: string, itemId: string) {
+  return {
+    pageId: CMS_PAGE_ID,
+    relativeUrl: `/data/${encodeURIComponent(collectionId)}/${encodeURIComponent(itemId)}`,
+  };
+}
+
+function navigateToCms(destination: ReturnType<typeof buildCmsCollectionDestination>, errorMessage: string) {
+  try {
+    debugLog('dashboard navigate:start', {
+      destination,
+    });
+
+    dashboard.navigate(destination, {
+      displayMode: 'main',
+      history: 'push',
+    });
+
+    debugLog('dashboard navigate:success', {
+      destination,
+    });
+  } catch (error) {
+    debugError('dashboard navigate:failed', error);
+    dashboard.showToast({
+      message: errorMessage,
+    });
+  }
+}
+
+function debugLog(message: string, payload?: unknown) {
+  console.log(`[ZIDER LOGO LOOP] ${message}`, payload ?? '');
+}
+
+function debugError(message: string, error: unknown) {
+  console.error(`[ZIDER LOGO LOOP] ${message}`, serializeError(error));
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return error;
 }
 
 function resolveImageUrl(value: unknown): string {
