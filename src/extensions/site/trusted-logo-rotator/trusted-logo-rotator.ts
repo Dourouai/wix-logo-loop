@@ -1,5 +1,5 @@
 import { items } from '@wix/data';
-import { hasLogoSortNumber, sortLogoItems } from '../../shared/logo-order';
+import { sortLogoItems } from '../../shared/logo-order';
 
 const DEFAULT_COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
 const WATERMARK_URL = 'https://static.wixstatic.com/shapes/46696d_df515679c6e04f618b508fb4336421f5.svg';
@@ -17,6 +17,9 @@ const DESKTOP_LOGO_IMAGE_TRANSFORM_WIDTH = 520;
 const DESKTOP_LOGO_IMAGE_TRANSFORM_HEIGHT = 180;
 const MOBILE_LOGO_IMAGE_TRANSFORM_WIDTH = 360;
 const MOBILE_LOGO_IMAGE_TRANSFORM_HEIGHT = 120;
+const LOGO_ITEMS_CACHE_TTL_MS = 60_000;
+const PERSISTED_LOGO_ITEMS_CACHE_TTL_MS = 10 * 60_000;
+const PERSISTED_LOGO_ITEMS_CACHE_PREFIX = 'zider-trusted-logo-rotator:items:v1';
 
 type LogoItem = {
   image?: unknown;
@@ -136,30 +139,38 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
 
   private async loadLogos() {
     const token = ++this.loadToken;
+    const cachedItems = readPersistedLogoItems(this.collectionId, DISPLAY_LOGO_LIMIT);
+
+    if (cachedItems.length > 0) {
+      this.applyLogoItems(token, cachedItems);
+    }
 
     try {
       const cmsItems = await queryOrderedLogoItems(this.collectionId, DISPLAY_LOGO_LIMIT);
-
-      if (token !== this.loadToken) {
-        return;
-      }
-
-      this.logos = cmsItems
-        .map((item) => normalizeLogoItem(item))
-        .filter((item): item is LogoViewItem => Boolean(item?.imageSource));
-      this.hasLoadedLogos = true;
-      this.visibleStartIndex = 0;
-
-      if (this.hasConnected) {
-        this.queueRender();
-      }
+      this.applyLogoItems(token, cmsItems);
     } catch (error) {
-      if (token === this.loadToken) {
+      if (token === this.loadToken && !this.hasLoadedLogos) {
         this.logos = [];
         this.hasLoadedLogos = true;
         console.warn('[ZIDER TRUSTED LOGO ROTATOR] CMS query failed, leaving logo list empty.', error);
         this.queueRender();
       }
+    }
+  }
+
+  private applyLogoItems(token: number, items: LogoItem[]) {
+    if (token !== this.loadToken) {
+      return;
+    }
+
+    this.logos = items
+      .map((item) => normalizeLogoItem(item))
+      .filter((item): item is LogoViewItem => Boolean(item?.imageSource));
+    this.hasLoadedLogos = true;
+    this.visibleStartIndex = 0;
+
+    if (this.hasConnected) {
+      this.queueRender();
     }
   }
 
@@ -577,25 +588,103 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
 }
 
 async function queryOrderedLogoItems(collectionId: string, limit: number) {
-  const numberedPage = await items
-    .query(collectionId)
-    .isNotEmpty('sortNumber')
-    .ascending('sortNumber')
-    .limit(limit)
-    .find();
-  const numberedItems = sortLogoItems((numberedPage.items as LogoItem[]).filter(hasLogoSortNumber));
+  const cacheKey = `${collectionId}:${limit}`;
+  const cachedItems = logoItemsCache.get(cacheKey);
 
-  if (numberedItems.length >= limit) {
-    return numberedItems.slice(0, limit);
+  if (cachedItems && cachedItems.expiresAt > Date.now()) {
+    return cachedItems.promise;
   }
 
-  const emptyPage = await items
-    .query(collectionId)
-    .isEmpty('sortNumber')
-    .limit(limit - numberedItems.length)
-    .find();
+  const promise = fetchOrderedLogoItems(collectionId, limit).catch((error) => {
+    logoItemsCache.delete(cacheKey);
+    throw error;
+  });
 
-  return [...numberedItems, ...(emptyPage.items as LogoItem[])].slice(0, limit);
+  logoItemsCache.set(cacheKey, {
+    expiresAt: Date.now() + LOGO_ITEMS_CACHE_TTL_MS,
+    promise,
+  });
+
+  return promise;
+}
+
+async function fetchOrderedLogoItems(collectionId: string, limit: number) {
+  const result = await items
+    .query(collectionId)
+    .limit(limit)
+    .find();
+  const sortedItems = sortLogoItems(result.items as LogoItem[]).slice(0, limit);
+
+  writePersistedLogoItems(collectionId, limit, sortedItems);
+
+  return sortedItems;
+}
+
+const logoItemsCache = new Map<string, { expiresAt: number; promise: Promise<LogoItem[]> }>();
+
+function readPersistedLogoItems(collectionId: string, limit: number): LogoItem[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const storage = getLogoItemsStorage();
+    const cachedValue = storage?.getItem(getPersistedLogoItemsCacheKey(collectionId, limit));
+
+    if (!cachedValue) {
+      return [];
+    }
+
+    const cachedData = JSON.parse(cachedValue) as { expiresAt?: number; items?: LogoItem[] };
+
+    if (!cachedData.expiresAt || cachedData.expiresAt <= Date.now() || !Array.isArray(cachedData.items)) {
+      return [];
+    }
+
+    return cachedData.items;
+  } catch {
+    return [];
+  }
+}
+
+function writePersistedLogoItems(collectionId: string, limit: number, logoItems: LogoItem[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    getLogoItemsStorage()?.setItem(
+      getPersistedLogoItemsCacheKey(collectionId, limit),
+      JSON.stringify({
+        expiresAt: Date.now() + PERSISTED_LOGO_ITEMS_CACHE_TTL_MS,
+        items: logoItems.map(toCacheableLogoItem),
+      }),
+    );
+  } catch {
+    // Storage can be unavailable in strict privacy modes. The in-memory cache still works.
+  }
+}
+
+function getLogoItemsStorage(): Storage | null {
+  try {
+    return window.localStorage || window.sessionStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+function getPersistedLogoItemsCacheKey(collectionId: string, limit: number) {
+  return `${PERSISTED_LOGO_ITEMS_CACHE_PREFIX}:${collectionId}:${limit}`;
+}
+
+function toCacheableLogoItem(item: LogoItem): LogoItem {
+  return {
+    image: resolveImageSource(item.image),
+    title: typeof item.title === 'string' ? item.title : '',
+    description: typeof item.description === 'string' ? item.description : '',
+    link: typeof item.link === 'string' ? item.link : '',
+    sortNumber: item.sortNumber,
+  };
 }
 
 function normalizeLogoItem(item: LogoItem): LogoViewItem | null {
