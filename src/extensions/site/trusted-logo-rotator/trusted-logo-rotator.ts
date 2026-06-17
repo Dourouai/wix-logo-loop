@@ -48,6 +48,7 @@ type RotatorConfig = {
 };
 
 export default class ZiderTrustedLogoRotator extends HTMLElement {
+  private readonly renderRoot: ShadowRoot;
   static get observedAttributes() {
     return [
       'logo-height',
@@ -82,6 +83,11 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
   private staggerTimeoutIds: number[] = [];
   private resizeObserver?: ResizeObserver;
   private reduceMotionQuery?: MediaQueryList;
+
+  constructor() {
+    super();
+    this.renderRoot = this.attachShadow({ mode: 'open' });
+  }
 
   connectedCallback() {
     this.hasConnected = true;
@@ -217,7 +223,7 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
       .join('');
     const staticMaxWidth = this.getStaticMaxWidth(activeSlotCount, config.gap);
 
-    this.innerHTML = `
+    this.renderRoot.innerHTML = `
       <style>
         :host {
           display: block;
@@ -230,6 +236,7 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
         .zider-trusted-logo-rotator {
           --zider-logo-height: ${config.logoHeight}px;
           --zider-logo-gap: ${config.gap}px;
+          --zider-logo-max-width: ${this.getLogoMaxWidth(config)}px;
           --zider-transition-duration: ${TRANSITION_DURATION_MS}ms;
           --zider-vertical-offset: ${VERTICAL_OFFSET_PX}px;
           position: relative;
@@ -248,7 +255,10 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
           display: grid;
           grid-template-columns: repeat(${Math.max(activeSlotCount, 1)}, minmax(0, 1fr));
           align-items: center;
+          justify-items: center;
+          flex: 1 1 auto;
           width: 100%;
+          min-width: 0;
           column-gap: var(--zider-logo-gap);
           box-sizing: border-box;
         }
@@ -263,6 +273,7 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
           display: flex;
           align-items: center;
           justify-content: center;
+          width: 100%;
           min-width: 0;
           height: calc(var(--zider-logo-height) + var(--zider-vertical-offset) * 2);
           color: inherit;
@@ -276,6 +287,8 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
           display: flex;
           align-items: center;
           justify-content: center;
+          width: 100%;
+          height: var(--zider-logo-height);
           min-width: 0;
           opacity: 1;
           transform: translateY(0);
@@ -302,10 +315,10 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
 
         .zider-rotator-image {
           display: block;
+          width: min(100%, var(--zider-logo-max-width));
           max-width: 100%;
-          max-height: var(--zider-logo-height);
-          width: auto;
-          height: auto;
+          height: 100%;
+          max-height: 100%;
           object-fit: contain;
           transition: filter 180ms ease, opacity 180ms ease;
         }
@@ -388,7 +401,7 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
   }
 
   private bindInteractions(config: RotatorConfig) {
-    const root = this.querySelector<HTMLElement>('.zider-trusted-logo-rotator');
+    const root = this.renderRoot.querySelector<HTMLElement>('.zider-trusted-logo-rotator');
 
     if (!root) {
       return;
@@ -423,8 +436,8 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
   }
 
   private startRotation() {
-    const root = this.querySelector<HTMLElement>('.zider-trusted-logo-rotator');
-    const slots = Array.from(this.querySelectorAll<HTMLElement>('.zider-rotator-slot'));
+    const root = this.renderRoot.querySelector<HTMLElement>('.zider-trusted-logo-rotator');
+    const slots = Array.from(this.renderRoot.querySelectorAll<HTMLElement>('.zider-rotator-slot'));
     const renderToken = this.renderToken;
 
     if (!root || slots.length === 0 || this.isAnimating || this.isPaused || this.isReducedMotion()) {
@@ -536,6 +549,18 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     }
 
     return (slotCount * 180) + ((slotCount - 1) * gap);
+  }
+
+  private getLogoMaxWidth(config: RotatorConfig) {
+    if (config.useMobileValues || this.slotCount === MOBILE_SLOT_COUNT) {
+      return 112;
+    }
+
+    if (this.slotCount === TABLET_SLOT_COUNT) {
+      return 150;
+    }
+
+    return 180;
   }
 
   private queueRender(delay = 0) {
