@@ -83,10 +83,10 @@ Zider Trusted Logo Rotator
 
 - 组件由多个固定 logo slot 组成。
 - 每个 slot 保持固定宽度和固定高度。
-- slot 数量根据设备宽度决定：
-  - Desktop：5 个
-  - Tablet：4 个
-  - Mobile：3 个
+- slot 数量根据设备宽度和用户设置决定：
+  - Desktop：默认 5 个，可配置
+  - Tablet：默认 4 个，可配置
+  - Mobile：默认 3 个，可配置
 - 所有 slot 在一行内平均分布。
 - 每个 slot 内 logo 居中显示。
 - logo 使用 `object-fit: contain`，不拉伸、不裁切。
@@ -191,7 +191,7 @@ Desktop 默认：
 ```text
 slots = 5
 logoHeight = 44px
-gap = 64px
+spacing = auto
 componentHeight = 96px
 ```
 
@@ -200,7 +200,7 @@ Tablet 默认：
 ```text
 slots = 4
 logoHeight = 40px
-gap = 40px
+spacing = auto
 componentHeight = 88px
 ```
 
@@ -209,11 +209,11 @@ Mobile 默认：
 ```text
 slots = 3
 logoHeight = 30px
-gap = 20px
+spacing = auto
 componentHeight = 72px
 ```
 
-移动端必须保持 3 个 logo 一屏展示。极窄屏下不降为 2 个，而是让 logo 在 slot 内自适应缩小。
+移动端默认保持 3 个 logo 一屏展示。用户调整 slot 数量后，logo 在 slot 内自适应缩放。
 
 ## 数据需求
 
@@ -250,16 +250,10 @@ componentHeight = 72px
 
 ### Layout
 
+- `Visible logos`
+- `Tablet visible logos`
 - `Logo height`
-- `Logo gap`
-
-第一版不暴露 desktop/tablet/mobile slot 数量，使用固定策略：
-
-```text
-Desktop = 5
-Tablet = 4
-Mobile = 3
-```
+- 不暴露 `gap`，组件根据宽度和 slot 数量自动计算间距。
 
 ### Motion
 
@@ -285,10 +279,8 @@ Mobile = 3
 ### Mobile
 
 - `Mobile Setting`
+- `Mobile visible logos`
 - `Mobile Logo Height`
-- `Mobile Logo Spacing`
-
-手机端 slot 数固定为 3，不提供调整项。
 
 ## 付费规则
 
@@ -429,9 +421,9 @@ otherwise: 5
 - 读取同一个 CMS logo 数据。
 - 最多展示前 50 个 logo。
 - CMS 已维护 logo 时，不显示任何默认假数据。
-- Desktop 一屏显示 5 个 logo。
-- Tablet 一屏显示 4 个 logo。
-- Mobile 一屏显示 3 个 logo。
+- Desktop 默认一屏显示 5 个 logo，可配置。
+- Tablet 默认一屏显示 4 个 logo，可配置。
+- Mobile 默认一屏显示 3 个 logo，可配置。
 - 每个 slot 固定位置，logo 按顺序向上依次替换。
 - 替换过程有 stagger，不是全部同时替换。
 - 不出现横向滑动、marquee、箭头或分页点。
@@ -441,7 +433,7 @@ otherwise: 5
 - `prefers-reduced-motion` 下不自动轮换。
 - 链接开关生效。
 - 灰度模式和隐藏 ZIDER badge 的付费规则生效。
-- 移动端启用 mobile 设置后，使用 mobile logo height 和 mobile gap。
+- 移动端启用 mobile 设置后，使用 mobile visible logos 和 mobile logo height。
 - `npm run typecheck` 通过。
 - `npm run build` 通过。
 
@@ -457,7 +449,7 @@ otherwise: 5
 
 ## 后续增强
 
-- 暴露 slot 数量设置。
+- 支持更多 per-device 布局 preset。
 - 暴露 stagger 设置。
 - 支持从上往下替换。
 - 支持随机轮换模式。
@@ -472,7 +464,7 @@ otherwise: 5
 3. 复用现有 CMS 查询逻辑，限制 50 条，不使用 fallback。
 4. 实现固定 slot 渲染。
 5. 实现向上依次替换动画。
-6. 实现 responsive slotCount：5 / 4 / 3。
+6. 实现 responsive slotCount：Desktop / Tablet / Mobile 可配置，默认 5 / 4 / 3。
 7. 复制并精简设置面板。
 8. 加 Dashboard 文案提示，如果现有提示已覆盖 50 个限制则复用。
 9. 添加预览缩略图。

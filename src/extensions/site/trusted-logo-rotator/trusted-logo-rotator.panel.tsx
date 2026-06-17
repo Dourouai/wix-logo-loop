@@ -8,14 +8,15 @@ import '@wix/design-system/styles.global.css';
 
 type SettingsState = {
   logoHeight: string;
-  gap: string;
+  visibleCount: string;
+  tabletVisibleCount: string;
   autoRotate: boolean;
   rotateInterval: string;
   pauseOnHover: boolean;
   links: boolean;
   grayMode: boolean;
   enableMobileSettings: boolean;
-  mobileGap: string;
+  mobileVisibleCount: string;
   mobileLogoHeight: string;
   hideWatermark: boolean;
 };
@@ -28,28 +29,30 @@ const PREMIUM_PLAN_ID = 'plus';
 
 const defaults: SettingsState = {
   logoHeight: '44',
-  gap: '64',
+  visibleCount: '5',
+  tabletVisibleCount: '4',
   autoRotate: true,
   rotateInterval: '3200',
   pauseOnHover: true,
   links: true,
   grayMode: false,
   enableMobileSettings: false,
-  mobileGap: '20',
+  mobileVisibleCount: '3',
   mobileLogoHeight: '30',
   hideWatermark: false,
 };
 
 const propMap = {
   logoHeight: 'logo-height',
-  gap: 'gap',
+  visibleCount: 'visible-count',
+  tabletVisibleCount: 'tablet-visible-count',
   autoRotate: 'auto-rotate',
   rotateInterval: 'rotate-interval',
   pauseOnHover: 'pause-on-hover',
   links: 'links',
   grayMode: 'gray-mode',
   enableMobileSettings: 'enable-mobile-settings',
-  mobileGap: 'mobile-gap',
+  mobileVisibleCount: 'mobile-visible-count',
   mobileLogoHeight: 'mobile-logo-height',
   hideWatermark: 'hide-watermark',
 } as const satisfies Record<keyof SettingsState, string>;
@@ -160,7 +163,7 @@ const Panel: FC = () => {
     widget.setProp(propMap[key], String(value));
   }, []);
 
-  const setMobileSetting = useCallback(<Key extends 'mobileLogoHeight' | 'mobileGap'>(
+  const setMobileSetting = useCallback(<Key extends 'mobileLogoHeight' | 'mobileVisibleCount'>(
     key: Key,
     value: SettingsState[Key],
   ) => {
@@ -199,13 +202,13 @@ const Panel: FC = () => {
   const isMobileEditor = editorDevice === 'mobile';
   const layoutTitle = isMobileEditor ? 'Mobile Layout' : 'Layout';
   const logoHeightValue = isMobileEditor ? settings.mobileLogoHeight : settings.logoHeight;
-  const logoGapValue = isMobileEditor ? settings.mobileGap : settings.gap;
+  const visibleCountValue = isMobileEditor ? settings.mobileVisibleCount : settings.visibleCount;
   const setLogoHeight = isMobileEditor
     ? (value: string) => setMobileSetting('mobileLogoHeight', value)
     : (value: string) => setSetting('logoHeight', value);
-  const setLogoGap = isMobileEditor
-    ? (value: string) => setMobileSetting('mobileGap', value)
-    : (value: string) => setSetting('gap', value);
+  const setVisibleCount = isMobileEditor
+    ? (value: string) => setMobileSetting('mobileVisibleCount', value)
+    : (value: string) => setSetting('visibleCount', value);
 
   return (
     <WixDesignSystemProvider>
@@ -223,6 +226,22 @@ const Panel: FC = () => {
 
             <PanelSection title={layoutTitle}>
               <RangeField
+                label={isMobileEditor ? 'Mobile visible logos' : 'Visible logos'}
+                value={visibleCountValue}
+                min={1}
+                max={8}
+                onChange={setVisibleCount}
+              />
+              {isMobileEditor ? null : (
+                <RangeField
+                  label="Tablet visible logos"
+                  value={settings.tabletVisibleCount}
+                  min={1}
+                  max={8}
+                  onChange={(value) => setSetting('tabletVisibleCount', value)}
+                />
+              )}
+              <RangeField
                 label={isMobileEditor ? 'Mobile logo height' : 'Logo height'}
                 value={logoHeightValue}
                 suffix="px"
@@ -230,16 +249,8 @@ const Panel: FC = () => {
                 max={isMobileEditor ? 72 : 96}
                 onChange={setLogoHeight}
               />
-              <RangeField
-                label={isMobileEditor ? 'Mobile logo gap' : 'Logo gap'}
-                value={logoGapValue}
-                suffix="px"
-                min={8}
-                max={isMobileEditor ? 56 : 120}
-                onChange={setLogoGap}
-              />
               <p style={styles.descriptionText}>
-                Slots are fixed automatically: desktop 5, tablet 4, mobile 3.
+                Spacing is calculated automatically from the component width.
               </p>
             </PanelSection>
 
@@ -309,6 +320,14 @@ const Panel: FC = () => {
                   onChange={(checked) => setSetting('enableMobileSettings', checked)}
                 />
                 <RangeField
+                  label="Mobile visible logos"
+                  value={settings.mobileVisibleCount}
+                  min={1}
+                  max={8}
+                  disabled={mobileControlsDisabled}
+                  onChange={(value) => setSetting('mobileVisibleCount', value)}
+                />
+                <RangeField
                   label="Mobile Logo Height"
                   value={settings.mobileLogoHeight}
                   suffix="px"
@@ -316,15 +335,6 @@ const Panel: FC = () => {
                   max={72}
                   disabled={mobileControlsDisabled}
                   onChange={(value) => setSetting('mobileLogoHeight', value)}
-                />
-                <RangeField
-                  label="Mobile Logo Spacing"
-                  value={settings.mobileGap}
-                  suffix="px"
-                  min={8}
-                  max={56}
-                  disabled={mobileControlsDisabled}
-                  onChange={(value) => setSetting('mobileGap', value)}
                 />
                 {isPremium ? null : (
                   <button type="button" style={styles.secondaryUpgradeButton} onClick={openUpgrade}>

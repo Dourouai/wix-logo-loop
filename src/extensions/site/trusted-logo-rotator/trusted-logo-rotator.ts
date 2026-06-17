@@ -11,6 +11,8 @@ const VERTICAL_OFFSET_PX = 16;
 const DESKTOP_SLOT_COUNT = 5;
 const TABLET_SLOT_COUNT = 4;
 const MOBILE_SLOT_COUNT = 3;
+const MIN_VISIBLE_LOGOS = 1;
+const MAX_VISIBLE_LOGOS = 8;
 const MOBILE_BREAKPOINT = 767;
 const TABLET_BREAKPOINT = 1024;
 const DESKTOP_LOGO_IMAGE_TRANSFORM_WIDTH = 520;
@@ -38,7 +40,6 @@ type LogoViewItem = {
 type RotatorConfig = {
   useMobileValues: boolean;
   logoHeight: number;
-  gap: number;
   rotateInterval: number;
   autoRotate: boolean;
   pauseOnHover: boolean;
@@ -53,6 +54,9 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     return [
       'logo-height',
       'gap',
+      'visible-count',
+      'tablet-visible-count',
+      'mobile-visible-count',
       'auto-rotate',
       'rotate-interval',
       'pause-on-hover',
@@ -190,7 +194,6 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     return {
       useMobileValues,
       logoHeight: this.getNumberAttr(useMobileValues ? 'mobile-logo-height' : 'logo-height', useMobileValues ? 30 : 44),
-      gap: this.getNumberAttr(useMobileValues ? 'mobile-gap' : 'gap', useMobileValues ? 20 : 64),
       rotateInterval: this.getNumberAttr('rotate-interval', DEFAULT_ROTATE_INTERVAL_MS),
       autoRotate: this.getBooleanAttr('auto-rotate', true),
       pauseOnHover: this.getBooleanAttr('pause-on-hover', true),
@@ -221,7 +224,7 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     const slotsMarkup = currentItems
       .map((logo, index) => this.renderSlot(logo, nextItems[index], config, index, canRotate))
       .join('');
-    const staticMaxWidth = this.getStaticMaxWidth(activeSlotCount, config.gap);
+    const staticMaxWidth = this.getStaticMaxWidth(activeSlotCount);
 
     this.renderRoot.innerHTML = `
       <style>
@@ -235,8 +238,8 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
 
         .zider-trusted-logo-rotator {
           --zider-logo-height: ${config.logoHeight}px;
-          --zider-logo-gap: ${config.gap}px;
-          --zider-logo-max-width: ${this.getLogoMaxWidth(config)}px;
+          --zider-logo-gap: ${this.getAutoGap(activeSlotCount)};
+          --zider-logo-max-width: ${this.getLogoMaxWidth(activeSlotCount)}px;
           --zider-transition-duration: ${TRANSITION_DURATION_MS}ms;
           --zider-vertical-offset: ${VERTICAL_OFFSET_PX}px;
           position: relative;
@@ -491,14 +494,14 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     const elementWidth = this.getBoundingClientRect().width || this.offsetWidth || window.innerWidth;
 
     if (elementWidth <= MOBILE_BREAKPOINT) {
-      return MOBILE_SLOT_COUNT;
+      return this.getVisibleCountAttr('mobile-visible-count', MOBILE_SLOT_COUNT);
     }
 
     if (elementWidth <= TABLET_BREAKPOINT) {
-      return TABLET_SLOT_COUNT;
+      return this.getVisibleCountAttr('tablet-visible-count', TABLET_SLOT_COUNT);
     }
 
-    return DESKTOP_SLOT_COUNT;
+    return this.getVisibleCountAttr('visible-count', DESKTOP_SLOT_COUNT);
   }
 
   private shouldUseMobileValues() {
@@ -543,24 +546,40 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     return Math.max(config.logoHeight + 52, 96);
   }
 
-  private getStaticMaxWidth(slotCount: number, gap: number) {
+  private getStaticMaxWidth(slotCount: number) {
     if (slotCount <= 0) {
       return 0;
     }
 
-    return (slotCount * 180) + ((slotCount - 1) * gap);
+    return (slotCount * this.getLogoMaxWidth(slotCount)) + ((slotCount - 1) * 48);
   }
 
-  private getLogoMaxWidth(config: RotatorConfig) {
-    if (config.useMobileValues || this.slotCount === MOBILE_SLOT_COUNT) {
-      return 112;
+  private getLogoMaxWidth(slotCount: number) {
+    const elementWidth = this.getBoundingClientRect().width || this.offsetWidth || window.innerWidth || 960;
+    const usableWidth = Math.max(elementWidth - 40 - (Math.max(slotCount - 1, 0) * 16), 120);
+    const slotWidth = usableWidth / Math.max(slotCount, 1);
+
+    if (slotCount <= 3) {
+      return clampNumber(Math.round(slotWidth * 0.98), 72, 132);
     }
 
-    if (this.slotCount === TABLET_SLOT_COUNT) {
-      return 150;
+    if (slotCount === 4) {
+      return clampNumber(Math.round(slotWidth * 0.98), 88, 168);
     }
 
-    return 180;
+    return clampNumber(Math.round(slotWidth * 0.98), 96, 190);
+  }
+
+  private getAutoGap(slotCount: number) {
+    if (slotCount <= 3) {
+      return 'clamp(12px, 5%, 56px)';
+    }
+
+    if (slotCount === 4) {
+      return 'clamp(16px, 4%, 64px)';
+    }
+
+    return 'clamp(16px, 3.2%, 72px)';
   }
 
   private queueRender(delay = 0) {
@@ -609,6 +628,14 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     }
 
     return value !== 'false';
+  }
+
+  private getVisibleCountAttr(name: string, fallback: number) {
+    return clampNumber(
+      Math.round(this.getNumberAttr(name, fallback)),
+      MIN_VISIBLE_LOGOS,
+      MAX_VISIBLE_LOGOS,
+    );
   }
 }
 
@@ -830,4 +857,12 @@ function escapeHtml(value: string) {
 
 function escapeAttr(value: string) {
   return escapeHtml(value);
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, value));
 }
