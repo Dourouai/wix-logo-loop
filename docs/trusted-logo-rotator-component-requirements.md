@@ -85,7 +85,7 @@ Zider Trusted Logo Rotator
 - 每个 slot 保持固定宽度和固定高度。
 - slot 数量根据设备宽度和用户设置决定：
   - Desktop：默认 5 个，可配置
-  - Tablet：默认 4 个，可配置
+  - Tablet：根据 Desktop 和 Mobile 自动推导，默认 4 个
   - Mobile：默认 3 个，可配置
 - 所有 slot 在一行内平均分布。
 - 每个 slot 内 logo 居中显示。
@@ -251,9 +251,9 @@ componentHeight = 72px
 ### Layout
 
 - `Visible logos`
-- `Tablet visible logos`
 - `Logo height`
 - 不暴露 `gap`，组件根据宽度和 slot 数量自动计算间距。
+- Tablet visible logos 不暴露给用户，根据 Desktop visible logos 和 Mobile visible logos 自动推导。
 
 ### Motion
 
@@ -422,7 +422,7 @@ otherwise: 5
 - 最多展示前 50 个 logo。
 - CMS 已维护 logo 时，不显示任何默认假数据。
 - Desktop 默认一屏显示 5 个 logo，可配置。
-- Tablet 默认一屏显示 4 个 logo，可配置。
+- Tablet 默认一屏显示 4 个 logo，由 Desktop 和 Mobile 设置自动推导。
 - Mobile 默认一屏显示 3 个 logo，可配置。
 - 每个 slot 固定位置，logo 按顺序向上依次替换。
 - 替换过程有 stagger，不是全部同时替换。
@@ -464,7 +464,7 @@ otherwise: 5
 3. 复用现有 CMS 查询逻辑，限制 50 条，不使用 fallback。
 4. 实现固定 slot 渲染。
 5. 实现向上依次替换动画。
-6. 实现 responsive slotCount：Desktop / Tablet / Mobile 可配置，默认 5 / 4 / 3。
+6. 实现 responsive slotCount：Desktop 和 Mobile 可配置，Tablet 自动推导，默认 5 / 4 / 3。
 7. 复制并精简设置面板。
 8. 加 Dashboard 文案提示，如果现有提示已覆盖 50 个限制则复用。
 9. 添加预览缩略图。

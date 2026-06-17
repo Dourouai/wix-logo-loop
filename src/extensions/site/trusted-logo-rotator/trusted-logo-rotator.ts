@@ -498,10 +498,26 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     }
 
     if (elementWidth <= TABLET_BREAKPOINT) {
-      return this.getVisibleCountAttr('tablet-visible-count', TABLET_SLOT_COUNT);
+      return this.resolveTabletVisibleCount();
     }
 
     return this.getVisibleCountAttr('visible-count', DESKTOP_SLOT_COUNT);
+  }
+
+  private resolveTabletVisibleCount() {
+    const legacyTabletCount = this.getAttribute('tablet-visible-count');
+
+    if (legacyTabletCount !== null && legacyTabletCount !== '') {
+      return this.getVisibleCountAttr('tablet-visible-count', TABLET_SLOT_COUNT);
+    }
+
+    const desktopCount = this.getVisibleCountAttr('visible-count', DESKTOP_SLOT_COUNT);
+    const mobileCount = this.getVisibleCountAttr('mobile-visible-count', MOBILE_SLOT_COUNT);
+    const inferredCount = Math.round((desktopCount + mobileCount) / 2);
+    const lowerBound = Math.min(desktopCount, mobileCount);
+    const upperBound = Math.max(desktopCount, mobileCount);
+
+    return clampNumber(inferredCount, lowerBound, upperBound);
   }
 
   private shouldUseMobileValues() {

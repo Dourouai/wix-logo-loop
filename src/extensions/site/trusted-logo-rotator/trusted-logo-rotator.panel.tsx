@@ -9,7 +9,6 @@ import '@wix/design-system/styles.global.css';
 type SettingsState = {
   logoHeight: string;
   visibleCount: string;
-  tabletVisibleCount: string;
   autoRotate: boolean;
   rotateInterval: string;
   pauseOnHover: boolean;
@@ -30,7 +29,6 @@ const PREMIUM_PLAN_ID = 'plus';
 const defaults: SettingsState = {
   logoHeight: '44',
   visibleCount: '5',
-  tabletVisibleCount: '4',
   autoRotate: true,
   rotateInterval: '3200',
   pauseOnHover: true,
@@ -45,7 +43,6 @@ const defaults: SettingsState = {
 const propMap = {
   logoHeight: 'logo-height',
   visibleCount: 'visible-count',
-  tabletVisibleCount: 'tablet-visible-count',
   autoRotate: 'auto-rotate',
   rotateInterval: 'rotate-interval',
   pauseOnHover: 'pause-on-hover',
@@ -232,15 +229,6 @@ const Panel: FC = () => {
                 max={8}
                 onChange={setVisibleCount}
               />
-              {isMobileEditor ? null : (
-                <RangeField
-                  label="Tablet visible logos"
-                  value={settings.tabletVisibleCount}
-                  min={1}
-                  max={8}
-                  onChange={(value) => setSetting('tabletVisibleCount', value)}
-                />
-              )}
               <RangeField
                 label={isMobileEditor ? 'Mobile logo height' : 'Logo height'}
                 value={logoHeightValue}
@@ -250,7 +238,7 @@ const Panel: FC = () => {
                 onChange={setLogoHeight}
               />
               <p style={styles.descriptionText}>
-                Spacing is calculated automatically from the component width.
+                Tablet count is inferred automatically from desktop and mobile values.
               </p>
             </PanelSection>
 
