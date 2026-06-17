@@ -1,23 +1,36 @@
 import { items } from '@wix/data';
+import { sortLogoItems } from '../../shared/logo-order';
 
 const DEFAULT_COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
 const WATERMARK_URL = 'https://static.wixstatic.com/shapes/46696d_df515679c6e04f618b508fb4336421f5.svg';
+const INITIAL_RENDER_DELAY_MS = 120;
+const DISPLAY_LOGO_LIMIT = 50;
+const INITIAL_IMAGE_READY_COUNT = 6;
+const INITIAL_IMAGE_READY_TIMEOUT_MS = 700;
+const DESKTOP_LOGO_IMAGE_TRANSFORM_WIDTH = 720;
+const DESKTOP_LOGO_IMAGE_TRANSFORM_HEIGHT = 240;
+const MOBILE_LOGO_IMAGE_TRANSFORM_WIDTH = 480;
+const MOBILE_LOGO_IMAGE_TRANSFORM_HEIGHT = 160;
+const LOGO_ITEMS_CACHE_TTL_MS = 60_000;
+const PERSISTED_LOGO_ITEMS_CACHE_TTL_MS = 10 * 60_000;
+const PERSISTED_LOGO_ITEMS_CACHE_PREFIX = 'zider-logo-loop:items:v2';
 
 type LogoItem = {
   image?: unknown;
   title?: string;
   description?: string;
   link?: string;
-  sortNumber?: number;
+  sortNumber?: unknown;
 };
 
 type LogoViewItem = {
-  src: string;
+  imageSource: string;
   alt: string;
   link: string;
 };
 
 type LoopConfig = {
+  useMobileValues: boolean;
   speed: number;
   gap: number;
   height: number;
@@ -29,14 +42,6 @@ type LoopConfig = {
   grayMode: boolean;
   hideWatermark: boolean;
 };
-
-const FALLBACK_LOGOS: LogoViewItem[] = [
-  { src: createTextLogo('Google', '#4285f4'), alt: 'Google', link: 'https://zider.ink/' },
-  { src: createTextLogo('Microsoft', '#00a4ef'), alt: 'Microsoft', link: 'https://zider.ink/' },
-  { src: createTextLogo('OpenAI', '#111111'), alt: 'OpenAI', link: 'https://zider.ink/' },
-  { src: createTextLogo('duda', '#fb7c24'), alt: 'Duda', link: 'https://zider.ink/' },
-  { src: createTextLogo('Claude', '#d97757'), alt: 'Claude', link: 'https://zider.ink/' },
-];
 
 export default class ZiderLogoLoop extends HTMLElement {
   static get observedAttributes() {
@@ -59,24 +64,37 @@ export default class ZiderLogoLoop extends HTMLElement {
     ];
   }
 
-  private logos: LogoViewItem[] = FALLBACK_LOGOS;
+  private logos: LogoViewItem[] = [];
   private loadToken = 0;
   private renderToken = 0;
+  private readyRenderToken = 0;
   private hasConnected = false;
+  private hasLoadedLogos = false;
+  private hasRendered = false;
+  private renderedUsesMobileValues = false;
+  private renderTimeoutId?: number;
   private animationFrameId?: number;
   private resizeObserver?: ResizeObserver;
 
   connectedCallback() {
     this.hasConnected = true;
-    this.render();
+    this.applyHostSize(this.config.height);
     this.loadLogos();
 
-    this.resizeObserver = new ResizeObserver(() => this.scheduleAnimation());
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.hasRendered && this.shouldUseMobileValues() !== this.renderedUsesMobileValues) {
+        this.queueRender();
+        return;
+      }
+
+      this.scheduleAnimation();
+    });
     this.resizeObserver.observe(this);
   }
 
   disconnectedCallback() {
     this.resizeObserver?.disconnect();
+    this.cancelQueuedRender();
     this.cancelScheduledAnimation();
   }
 
@@ -86,38 +104,52 @@ export default class ZiderLogoLoop extends HTMLElement {
     }
 
     if (name === 'collection-id') {
+      this.hasLoadedLogos = false;
       this.loadLogos();
       return;
     }
 
-    this.render();
+    if (!this.hasLoadedLogos && !this.hasRendered) {
+      this.applyHostSize(this.config.height);
+      return;
+    }
+
+    this.queueRender(this.hasRendered ? 0 : INITIAL_RENDER_DELAY_MS);
   }
 
   private async loadLogos() {
     const token = ++this.loadToken;
+    const cachedItems = readPersistedLogoItems(this.collectionId, DISPLAY_LOGO_LIMIT);
 
-    try {
-      const result = await items
-        .query(this.collectionId)
-        .ascending('sortNumber')
-        .limit(100)
-        .find({ consistentRead: true });
-
-      if (token !== this.loadToken) {
-        return;
-      }
-
-      const cmsLogos = result.items
-        .map((item) => normalizeLogoItem(item as LogoItem))
-        .filter((item): item is LogoViewItem => Boolean(item?.src));
-
-      this.logos = cmsLogos.length > 0 ? cmsLogos : FALLBACK_LOGOS;
-    } catch (error) {
-      console.warn('[ZIDER LOGO LOOP] CMS query failed, using fallback logos.', error);
-      this.logos = FALLBACK_LOGOS;
+    if (cachedItems.length > 0) {
+      this.applyLogoItems(token, cachedItems);
     }
 
-    this.render();
+    try {
+      const cmsItems = await queryOrderedLogoItems(this.collectionId, DISPLAY_LOGO_LIMIT);
+      this.applyLogoItems(token, cmsItems);
+    } catch (error) {
+      if (token === this.loadToken && !this.hasLoadedLogos) {
+        console.warn('[ZIDER LOGO LOOP] CMS query failed, leaving logo list empty.', error);
+      }
+    }
+  }
+
+  private applyLogoItems(token: number, items: LogoItem[]) {
+    if (token !== this.loadToken) {
+      return;
+    }
+
+    const nextLogos = items
+      .map((item) => normalizeLogoItem(item as LogoItem))
+      .filter((item): item is LogoViewItem => Boolean(item?.imageSource));
+
+    this.logos = nextLogos;
+    this.hasLoadedLogos = true;
+
+    if (this.hasConnected) {
+      this.queueRender();
+    }
   }
 
   private get collectionId() {
@@ -125,12 +157,10 @@ export default class ZiderLogoLoop extends HTMLElement {
   }
 
   private get config(): LoopConfig {
-    const useMobileValues =
-      this.getBooleanAttr('enable-mobile-settings', false) &&
-      typeof window !== 'undefined' &&
-      window.matchMedia('(max-width: 767px)').matches;
+    const useMobileValues = this.shouldUseMobileValues();
 
     return {
+      useMobileValues,
       speed: this.getNumberAttr(useMobileValues ? 'mobile-speed' : 'speed', 60),
       gap: this.getNumberAttr(useMobileValues ? 'mobile-gap' : 'gap', 40),
       height: this.getNumberAttr(useMobileValues ? 'mobile-logo-height' : 'logo-height', 50),
@@ -145,10 +175,17 @@ export default class ZiderLogoLoop extends HTMLElement {
   }
 
   private render() {
+    this.cancelQueuedRender();
+    this.hasRendered = true;
+
     const renderToken = ++this.renderToken;
+    this.readyRenderToken = 0;
     const config = this.config;
+    this.renderedUsesMobileValues = config.useMobileValues;
+    this.applyHostSize(config.height);
+
     const maskColor = config.hiddenMaskColor ? 'rgba(255,255,255,0)' : config.maskColor;
-    const logoMarkup = this.logos.map((logo) => this.renderLogo(logo, config)).join('');
+    const logoMarkup = this.logos.map((logo, index) => this.renderLogo(logo, config, index)).join('');
 
     this.innerHTML = `
       <style>
@@ -166,6 +203,7 @@ export default class ZiderLogoLoop extends HTMLElement {
           --zider-mask-color: ${maskColor};
           position: relative;
           width: 100%;
+          height: var(--zider-logo-height);
           min-height: var(--zider-logo-height);
           display: flex;
           align-items: center;
@@ -199,7 +237,13 @@ export default class ZiderLogoLoop extends HTMLElement {
           align-items: center;
           flex-wrap: nowrap;
           width: max-content;
+          opacity: 0;
           will-change: transform;
+          transition: opacity 120ms ease;
+        }
+
+        .zider-logo-loop[data-ready="true"] .zider-logo-track {
+          opacity: 1;
         }
 
         .zider-logo-item {
@@ -254,7 +298,7 @@ export default class ZiderLogoLoop extends HTMLElement {
           to { transform: translateX(calc(var(--zider-loop-distance, 0px) * -1)); }
         }
       </style>
-      <div class="zider-logo-loop" data-gray-mode="${String(config.grayMode)}">
+      <div class="zider-logo-loop" data-gray-mode="${String(config.grayMode)}" data-ready="false">
         <div class="zider-logo-track">${logoMarkup}</div>
         <a class="zider-watermark" href="https://zider.ink/" target="_blank" rel="noopener noreferrer" aria-label="Powered by ZIDER">
           <img src="${WATERMARK_URL}" alt="ZIDER" />
@@ -263,21 +307,43 @@ export default class ZiderLogoLoop extends HTMLElement {
     `;
 
     this.bindInteractions(config);
+    this.waitForInitialImages().then(() => {
+      if (renderToken === this.renderToken) {
+        this.readyRenderToken = renderToken;
+        this.scheduleAnimation();
+      }
+    });
     this.waitForImages().then(() => {
       if (renderToken === this.renderToken) {
+        this.readyRenderToken = renderToken;
         this.scheduleAnimation();
       }
     });
   }
 
-  private renderLogo(logo: LogoViewItem, config: LoopConfig) {
+  private applyHostSize(height: number) {
+    const heightValue = `${Math.max(height, 24)}px`;
+
+    this.style.display = 'block';
+    this.style.removeProperty('width');
+    this.style.maxWidth = '100%';
+    this.style.minWidth = '120px';
+    this.style.height = heightValue;
+    this.style.minHeight = heightValue;
+    this.style.boxSizing = 'border-box';
+    this.style.overflow = 'hidden';
+  }
+
+  private renderLogo(logo: LogoViewItem, config: LoopConfig, index: number) {
     const tag = config.links && logo.link ? 'a' : 'span';
     const href = tag === 'a' ? ` href="${escapeAttr(logo.link)}" target="_blank" rel="noopener noreferrer"` : '';
     const cursor = tag === 'a' ? 'pointer' : 'default';
+    const fetchPriority = index < INITIAL_IMAGE_READY_COUNT ? 'high' : 'low';
+    const src = resolveImageUrl(logo.imageSource, config);
 
     return `
       <${tag} class="zider-logo-item" ${href}>
-        <img class="zider-logo-image" src="${escapeAttr(logo.src)}" alt="${escapeAttr(logo.alt)}" style="cursor:${cursor};" />
+        <img class="zider-logo-image" src="${escapeAttr(src)}" alt="${escapeAttr(logo.alt)}" decoding="async" fetchpriority="${fetchPriority}" style="cursor:${cursor};" />
       </${tag}>
     `;
   }
@@ -294,9 +360,36 @@ export default class ZiderLogoLoop extends HTMLElement {
     root.onmouseleave = config.pauseOnHover ? () => (track.style.animationPlayState = 'running') : null;
   }
 
+  private shouldUseMobileValues() {
+    if (!this.getBooleanAttr('enable-mobile-settings', false) || typeof window === 'undefined') {
+      return false;
+    }
+
+    const elementWidth = this.getBoundingClientRect().width || this.offsetWidth;
+
+    return (
+      window.matchMedia('(max-width: 767px)').matches ||
+      (elementWidth > 0 && elementWidth <= 767)
+    );
+  }
+
   private async waitForImages() {
     const images = Array.from(this.querySelectorAll<HTMLImageElement>('.zider-logo-image'));
 
+    await this.waitForImageElements(images);
+  }
+
+  private async waitForInitialImages() {
+    const images = Array.from(this.querySelectorAll<HTMLImageElement>('.zider-logo-image'));
+    const initialImages = images.slice(0, INITIAL_IMAGE_READY_COUNT);
+
+    await Promise.race([
+      this.waitForImageElements(initialImages),
+      delay(INITIAL_IMAGE_READY_TIMEOUT_MS),
+    ]);
+  }
+
+  private async waitForImageElements(images: HTMLImageElement[]) {
     await Promise.all(
       images.map(
         (image) =>
@@ -306,8 +399,8 @@ export default class ZiderLogoLoop extends HTMLElement {
               return;
             }
 
-            image.onload = () => resolve();
-            image.onerror = () => resolve();
+            image.addEventListener('load', () => resolve(), { once: true });
+            image.addEventListener('error', () => resolve(), { once: true });
           }),
       ),
     );
@@ -321,6 +414,10 @@ export default class ZiderLogoLoop extends HTMLElement {
       return;
     }
 
+    if (this.readyRenderToken !== this.renderToken) {
+      return;
+    }
+
     const config = this.config;
     track.style.animation = 'none';
     track.style.transform = 'translateX(0)';
@@ -329,19 +426,21 @@ export default class ZiderLogoLoop extends HTMLElement {
     const containerWidth = root.offsetWidth || window.innerWidth || 1000;
     const baseChildren = Array.from(track.children);
     const baseWidth = track.scrollWidth;
-    let loopLimit = 10;
 
     if (baseWidth <= 0 || baseChildren.length === 0) {
       return;
     }
 
-    while (track.scrollWidth < containerWidth + baseWidth && loopLimit > 0) {
-      baseChildren.forEach((child) => {
-        const clone = child.cloneNode(true) as HTMLElement;
-        clone.setAttribute('data-zider-clone', 'true');
-        track.appendChild(clone);
-      });
-      loopLimit -= 1;
+    const maxCloneCount = baseChildren.length * Math.max(Math.ceil(containerWidth / baseWidth) + 1, 2);
+    let cloneCount = 0;
+
+    while (track.scrollWidth < containerWidth + baseWidth && cloneCount < maxCloneCount) {
+      const child = baseChildren[cloneCount % baseChildren.length];
+      const clone = child.cloneNode(true) as HTMLElement;
+
+      clone.setAttribute('data-zider-clone', 'true');
+      track.appendChild(clone);
+      cloneCount += 1;
     }
 
     const distance = Math.max(baseWidth, 1);
@@ -354,6 +453,23 @@ export default class ZiderLogoLoop extends HTMLElement {
     track.style.animationIterationCount = 'infinite';
     track.style.animationDirection = config.direction === 'right' ? 'reverse' : 'normal';
     track.style.animationPlayState = 'running';
+    root.dataset.ready = 'true';
+  }
+
+  private queueRender(delay = 0) {
+    this.cancelQueuedRender();
+
+    this.renderTimeoutId = window.setTimeout(() => {
+      this.renderTimeoutId = undefined;
+      this.render();
+    }, delay);
+  }
+
+  private cancelQueuedRender() {
+    if (this.renderTimeoutId !== undefined) {
+      window.clearTimeout(this.renderTimeoutId);
+      this.renderTimeoutId = undefined;
+    }
   }
 
   private scheduleAnimation() {
@@ -395,26 +511,126 @@ export default class ZiderLogoLoop extends HTMLElement {
 }
 
 function normalizeLogoItem(item: LogoItem): LogoViewItem | null {
-  const src = resolveImageUrl(item.image);
+  const imageSource = resolveImageSource(item.image);
 
-  if (!src) {
+  if (!imageSource) {
     return null;
   }
 
   return {
-    src,
+    imageSource,
     alt: item.title || item.description || 'Logo',
     link: item.link || '',
   };
 }
 
-function resolveImageUrl(value: unknown): string {
+async function queryOrderedLogoItems(collectionId: string, limit: number) {
+  const cacheKey = `${collectionId}:${limit}`;
+  const cachedItems = logoItemsCache.get(cacheKey);
+
+  if (cachedItems && cachedItems.expiresAt > Date.now()) {
+    return cachedItems.promise;
+  }
+
+  const promise = fetchOrderedLogoItems(collectionId, limit).catch((error) => {
+    logoItemsCache.delete(cacheKey);
+    throw error;
+  });
+
+  logoItemsCache.set(cacheKey, {
+    expiresAt: Date.now() + LOGO_ITEMS_CACHE_TTL_MS,
+    promise,
+  });
+
+  return promise;
+}
+
+async function fetchOrderedLogoItems(collectionId: string, limit: number) {
+  const result = await items
+    .query(collectionId)
+    .limit(limit)
+    .find();
+  const sortedItems = sortLogoItems(result.items as LogoItem[]).slice(0, limit);
+
+  writePersistedLogoItems(collectionId, limit, sortedItems);
+
+  return sortedItems;
+}
+
+const logoItemsCache = new Map<string, { expiresAt: number; promise: Promise<LogoItem[]> }>();
+
+function readPersistedLogoItems(collectionId: string, limit: number): LogoItem[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const storage = getLogoItemsStorage();
+    const cachedValue = storage?.getItem(getPersistedLogoItemsCacheKey(collectionId, limit));
+
+    if (!cachedValue) {
+      return [];
+    }
+
+    const cachedData = JSON.parse(cachedValue) as { expiresAt?: number; items?: LogoItem[] };
+
+    if (!cachedData.expiresAt || cachedData.expiresAt <= Date.now() || !Array.isArray(cachedData.items)) {
+      return [];
+    }
+
+    return cachedData.items;
+  } catch {
+    return [];
+  }
+}
+
+function writePersistedLogoItems(collectionId: string, limit: number, logoItems: LogoItem[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    getLogoItemsStorage()?.setItem(
+      getPersistedLogoItemsCacheKey(collectionId, limit),
+      JSON.stringify({
+        expiresAt: Date.now() + PERSISTED_LOGO_ITEMS_CACHE_TTL_MS,
+        items: logoItems.map(toCacheableLogoItem),
+      }),
+    );
+  } catch {
+    // Storage can be unavailable in strict privacy modes. The in-memory cache still works.
+  }
+}
+
+function getLogoItemsStorage(): Storage | null {
+  try {
+    return window.localStorage || window.sessionStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+function getPersistedLogoItemsCacheKey(collectionId: string, limit: number) {
+  return `${PERSISTED_LOGO_ITEMS_CACHE_PREFIX}:${collectionId}:${limit}`;
+}
+
+function toCacheableLogoItem(item: LogoItem): LogoItem {
+  return {
+    image: resolveImageSource(item.image),
+    title: typeof item.title === 'string' ? item.title : '',
+    description: typeof item.description === 'string' ? item.description : '',
+    link: typeof item.link === 'string' ? item.link : '',
+    sortNumber: item.sortNumber,
+  };
+}
+
+function resolveImageSource(value: unknown): string {
   if (!value) {
     return '';
   }
 
   if (typeof value === 'string') {
-    return normalizeWixMediaUrl(value);
+    return value;
   }
 
   if (typeof value === 'object') {
@@ -422,21 +638,29 @@ function resolveImageUrl(value: unknown): string {
     const rawUrl = record.url || record.src || record.fileUrl || record.imageUrl;
 
     if (typeof rawUrl === 'string') {
-      return normalizeWixMediaUrl(rawUrl);
+      return rawUrl;
     }
   }
 
   return '';
 }
 
-function normalizeWixMediaUrl(url: string) {
-  if (url.startsWith('http') || url.startsWith('//') || url.startsWith('data:image')) {
+function resolveImageUrl(url: string, config: LoopConfig) {
+  return normalizeWixMediaUrl(url, getLogoImageTransformSize(config));
+}
+
+function normalizeWixMediaUrl(url: string, size: LogoImageTransformSize) {
+  if (url.startsWith('data:image')) {
     return url;
+  }
+
+  if (url.startsWith('http') || url.startsWith('//')) {
+    return optimizeStaticWixImageUrl(url, size);
   }
 
   if (url.startsWith('wix:image://')) {
     const match = url.match(/wix:image:\/\/v1\/([^/#?]+)/);
-    return match?.[1] ? `https://static.wixstatic.com/media/${match[1]}` : url;
+    return match?.[1] ? createOptimizedWixImageUrl(match[1], size) : url;
   }
 
   if (url.startsWith('wix:vector://') || url.startsWith('wix:shape://')) {
@@ -446,6 +670,52 @@ function normalizeWixMediaUrl(url: string) {
   }
 
   return url;
+}
+
+type LogoImageTransformSize = {
+  width: number;
+  height: number;
+};
+
+function getLogoImageTransformSize(config: LoopConfig): LogoImageTransformSize {
+  if (config.useMobileValues || config.height <= 80) {
+    return {
+      width: MOBILE_LOGO_IMAGE_TRANSFORM_WIDTH,
+      height: MOBILE_LOGO_IMAGE_TRANSFORM_HEIGHT,
+    };
+  }
+
+  return {
+    width: DESKTOP_LOGO_IMAGE_TRANSFORM_WIDTH,
+    height: DESKTOP_LOGO_IMAGE_TRANSFORM_HEIGHT,
+  };
+}
+
+function optimizeStaticWixImageUrl(url: string, size: LogoImageTransformSize) {
+  const normalizedUrl = url.startsWith('//') ? `https:${url}` : url;
+
+  if (!normalizedUrl.startsWith('https://static.wixstatic.com/media/')) {
+    return normalizedUrl;
+  }
+
+  const match = normalizedUrl.match(/^https?:\/\/static\.wixstatic\.com\/media\/([^/?#]+)(?:\/v1\/.*)?$/i);
+  const mediaId = match?.[1];
+
+  if (!mediaId || /\.svg$/i.test(mediaId)) {
+    return normalizedUrl;
+  }
+
+  return createOptimizedWixImageUrl(mediaId, size);
+}
+
+function createOptimizedWixImageUrl(mediaId: string, size: LogoImageTransformSize) {
+  return `https://static.wixstatic.com/media/${mediaId}/v1/fit/w_${size.width},h_${size.height},al_c,q_85,enc_avif,quality_auto/${mediaId}`;
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function sanitizeColor(value: string) {
@@ -460,19 +730,6 @@ function sanitizeColor(value: string) {
   }
 
   return '#ffffff';
-}
-
-function createTextLogo(text: string, color: string) {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="240" height="72" viewBox="0 0 240 72">
-      <rect width="240" height="72" fill="none"/>
-      <text x="120" y="46" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="${color}">
-        ${escapeHtml(text)}
-      </text>
-    </svg>
-  `;
-
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function escapeHtml(value: string) {

@@ -3,11 +3,13 @@ import { dashboard } from '@wix/dashboard';
 import { items } from '@wix/data';
 import { appInstances } from '@wix/app-management';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
+import { getLogoSortNumber, hasLogoSortNumber, sortLogoItems } from '../../../shared/logo-order';
 import '@wix/design-system/styles.global.css';
 
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
 const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
-const DASHBOARD_VERSION = '6.8.0';
+const IMAGE_COMPRESSOR_URL = 'https://squoosh.app/';
+const DASHBOARD_VERSION = '7.1.0';
 const PAGE_SIZE = 10;
 
 type LogoItem = {
@@ -15,7 +17,7 @@ type LogoItem = {
   image?: unknown;
   title?: string;
   description?: string;
-  sortNumber?: number;
+  sortNumber?: unknown;
   link?: unknown;
 };
 
@@ -94,6 +96,17 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 16,
     lineHeight: 1.45,
     margin: '4px 0 0',
+  },
+  displayLimitNote: {
+    color: '#7f8ba0',
+    fontSize: 13,
+    lineHeight: 1.4,
+    margin: '8px 0 0',
+  },
+  noteLink: {
+    color: '#1264ff',
+    textDecoration: 'underline',
+    textUnderlineOffset: 2,
   },
   primaryButton: {
     minWidth: 150,
@@ -248,19 +261,15 @@ const DashboardPage: FC = () => {
         pageSize: PAGE_SIZE,
       });
 
-      const result = await items
-        .query(COLLECTION_ID)
-        .ascending('sortNumber')
-        .skip((nextPage - 1) * PAGE_SIZE)
-        .limit(PAGE_SIZE)
-        .find({ consistentRead: true, returnTotalCount: true });
-
-      const nextTotalCount = result.totalCount ?? result.items.length;
+      const result = await queryOrderedLogoPage(nextPage, PAGE_SIZE);
+      const nextTotalCount = result.totalCount;
       const nextTotalPages = Math.max(1, Math.ceil(nextTotalCount / PAGE_SIZE));
 
       debugLog('load logo data:success', {
         collectionId: COLLECTION_ID,
         receivedItems: result.items.length,
+        numberedItems: result.numberedCount,
+        emptySortNumberItems: result.emptyCount,
         totalCount: nextTotalCount,
         page: nextPage,
         totalPages: nextTotalPages,
@@ -430,6 +439,24 @@ const DashboardPage: FC = () => {
                     <p style={styles.cardCopy}>
                       Preview the current CMS logo records. Edit logo content from your site CMS.
                     </p>
+                    <p style={styles.displayLimitNote}>
+                      Sort order: lower Sort Number values appear first. Blank values appear after numbered logos.
+                    </p>
+                    <p style={styles.displayLimitNote}>
+                      Site components display up to the first 50 logos from this list.
+                    </p>
+                    <p style={styles.displayLimitNote}>
+                      Image tip: keep each logo in its original proportion, avoid oversized files, and compress images with{' '}
+                      <a
+                        href={IMAGE_COMPRESSOR_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={styles.noteLink}
+                      >
+                        Squoosh
+                      </a>
+                      {' '}before uploading.
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -546,13 +573,66 @@ const DashboardPage: FC = () => {
 
 export default DashboardPage;
 
+async function queryOrderedLogoPage(page: number, pageSize: number) {
+  const offset = (page - 1) * pageSize;
+  const [numberedCountResult, emptyCountResult] = await Promise.all([
+    items
+      .query(COLLECTION_ID)
+      .isNotEmpty('sortNumber')
+      .limit(1)
+      .find({ consistentRead: true, returnTotalCount: true }),
+    items
+      .query(COLLECTION_ID)
+      .isEmpty('sortNumber')
+      .limit(1)
+      .find({ consistentRead: true, returnTotalCount: true }),
+  ]);
+  const numberedCount = numberedCountResult.totalCount ?? numberedCountResult.items.length;
+  const emptyCount = emptyCountResult.totalCount ?? emptyCountResult.items.length;
+  const pageItems: LogoItem[] = [];
+
+  if (offset < numberedCount) {
+    const numberedLimit = Math.min(pageSize, numberedCount - offset);
+    const numberedPage = await items
+      .query(COLLECTION_ID)
+      .isNotEmpty('sortNumber')
+      .ascending('sortNumber')
+      .skip(offset)
+      .limit(numberedLimit)
+      .find({ consistentRead: true });
+
+    pageItems.push(...sortLogoItems((numberedPage.items as LogoItem[]).filter(hasLogoSortNumber)));
+  }
+
+  if (pageItems.length < pageSize) {
+    const emptyOffset = Math.max(0, offset - numberedCount);
+    const emptyPage = await items
+      .query(COLLECTION_ID)
+      .isEmpty('sortNumber')
+      .skip(emptyOffset)
+      .limit(pageSize - pageItems.length)
+      .find({ consistentRead: true });
+
+    pageItems.push(...(emptyPage.items as LogoItem[]));
+  }
+
+  return {
+    items: pageItems,
+    totalCount: numberedCount + emptyCount,
+    numberedCount,
+    emptyCount,
+  };
+}
+
 function mapLogoRow(item: LogoItem): LogoRow {
+  const sortNumber = getLogoSortNumber(item.sortNumber);
+
   return {
     id: item._id || `${item.title || item.description || 'logo'}-${item.sortNumber || 0}`,
     cmsItemId: item._id || '',
     imageSrc: resolveImageUrl(item.image),
     name: item.title || item.description || 'Untitled logo',
-    sortNumber: typeof item.sortNumber === 'number' ? item.sortNumber : null,
+    sortNumber,
     link: resolveLinkUrl(item.link),
   };
 }

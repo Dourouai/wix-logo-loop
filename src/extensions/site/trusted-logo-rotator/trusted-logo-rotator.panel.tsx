@@ -7,17 +7,14 @@ import {
 import '@wix/design-system/styles.global.css';
 
 type SettingsState = {
-  speed: string;
-  gap: string;
   logoHeight: string;
-  direction: 'left' | 'right';
+  gap: string;
+  autoRotate: boolean;
+  rotateInterval: string;
   pauseOnHover: boolean;
   links: boolean;
   grayMode: boolean;
-  hiddenMaskColor: boolean;
-  maskColor: string;
   enableMobileSettings: boolean;
-  mobileSpeed: string;
   mobileGap: string;
   mobileLogoHeight: string;
   hideWatermark: boolean;
@@ -30,34 +27,28 @@ const APP_ID = 'f1615a5b-65ed-4121-ae57-f2194f350030';
 const PREMIUM_PLAN_ID = 'plus';
 
 const defaults: SettingsState = {
-  speed: '60',
-  gap: '40',
-  logoHeight: '50',
-  direction: 'left',
+  logoHeight: '44',
+  gap: '64',
+  autoRotate: true,
+  rotateInterval: '3200',
   pauseOnHover: true,
   links: true,
   grayMode: false,
-  hiddenMaskColor: true,
-  maskColor: '#ffffff',
   enableMobileSettings: false,
-  mobileSpeed: '45',
-  mobileGap: '28',
-  mobileLogoHeight: '40',
+  mobileGap: '20',
+  mobileLogoHeight: '30',
   hideWatermark: false,
 };
 
 const propMap = {
-  speed: 'speed',
-  gap: 'gap',
   logoHeight: 'logo-height',
-  direction: 'direction',
+  gap: 'gap',
+  autoRotate: 'auto-rotate',
+  rotateInterval: 'rotate-interval',
   pauseOnHover: 'pause-on-hover',
   links: 'links',
   grayMode: 'gray-mode',
-  hiddenMaskColor: 'hidden-mask-color',
-  maskColor: 'mask-color',
   enableMobileSettings: 'enable-mobile-settings',
-  mobileSpeed: 'mobile-speed',
   mobileGap: 'mobile-gap',
   mobileLogoHeight: 'mobile-logo-height',
   hideWatermark: 'hide-watermark',
@@ -102,7 +93,7 @@ const Panel: FC = () => {
           return next;
         });
       })
-      .catch((error) => console.error('[ZIDER LOGO LOOP] Failed to load widget settings.', error));
+      .catch((error) => console.error('[ZIDER TRUSTED LOGO ROTATOR] Failed to load widget settings.', error));
 
     return () => {
       mounted = false;
@@ -152,7 +143,7 @@ const Panel: FC = () => {
         }
       })
       .catch((error) => {
-        console.warn('[ZIDER LOGO LOOP] Failed to resolve app plan.', error);
+        console.warn('[ZIDER TRUSTED LOGO ROTATOR] Failed to resolve app plan.', error);
 
         if (mounted) {
           setPlanStatus('unknown');
@@ -169,7 +160,7 @@ const Panel: FC = () => {
     widget.setProp(propMap[key], String(value));
   }, []);
 
-  const setMobileSetting = useCallback(<Key extends 'mobileLogoHeight' | 'mobileGap' | 'mobileSpeed'>(
+  const setMobileSetting = useCallback(<Key extends 'mobileLogoHeight' | 'mobileGap'>(
     key: Key,
     value: SettingsState[Key],
   ) => {
@@ -207,19 +198,14 @@ const Panel: FC = () => {
   const mobileControlsDisabled = paidControlsDisabled || !enableMobileSettingsValue;
   const isMobileEditor = editorDevice === 'mobile';
   const layoutTitle = isMobileEditor ? 'Mobile Layout' : 'Layout';
-  const motionTitle = isMobileEditor ? 'Mobile Motion' : 'Motion';
   const logoHeightValue = isMobileEditor ? settings.mobileLogoHeight : settings.logoHeight;
   const logoGapValue = isMobileEditor ? settings.mobileGap : settings.gap;
-  const speedValue = isMobileEditor ? settings.mobileSpeed : settings.speed;
   const setLogoHeight = isMobileEditor
     ? (value: string) => setMobileSetting('mobileLogoHeight', value)
     : (value: string) => setSetting('logoHeight', value);
   const setLogoGap = isMobileEditor
     ? (value: string) => setMobileSetting('mobileGap', value)
     : (value: string) => setSetting('gap', value);
-  const setSpeed = isMobileEditor
-    ? (value: string) => setMobileSetting('mobileSpeed', value)
-    : (value: string) => setSetting('speed', value);
 
   return (
     <WixDesignSystemProvider>
@@ -231,7 +217,7 @@ const Panel: FC = () => {
                 Manage Logos
               </button>
               <p style={styles.descriptionText}>
-                Open the dashboard to add, edit, or reorder logo records.
+                The rotator displays up to 50 logos, ordered by Sort Number.
               </p>
             </PanelSection>
 
@@ -241,7 +227,7 @@ const Panel: FC = () => {
                 value={logoHeightValue}
                 suffix="px"
                 min={isMobileEditor ? 20 : 24}
-                max={isMobileEditor ? 96 : 120}
+                max={isMobileEditor ? 72 : 96}
                 onChange={setLogoHeight}
               />
               <RangeField
@@ -249,31 +235,33 @@ const Panel: FC = () => {
                 value={logoGapValue}
                 suffix="px"
                 min={8}
-                max={isMobileEditor ? 96 : 120}
+                max={isMobileEditor ? 56 : 120}
                 onChange={setLogoGap}
               />
+              <p style={styles.descriptionText}>
+                Slots are fixed automatically: desktop 5, tablet 4, mobile 3.
+              </p>
             </PanelSection>
 
-            <PanelSection title={motionTitle}>
-              <RangeField
-                label={isMobileEditor ? 'Mobile speed' : 'Speed'}
-                value={speedValue}
-                min={10}
-                max={isMobileEditor ? 160 : 180}
-                onChange={setSpeed}
+            <PanelSection title="Motion">
+              <ToggleRow
+                label="Auto rotate"
+                checked={settings.autoRotate}
+                onChange={(checked) => setSetting('autoRotate', checked)}
               />
-              <SegmentedField
-                label="Direction"
-                value={settings.direction}
-                options={[
-                  { label: 'Left', value: 'left' },
-                  { label: 'Right', value: 'right' },
-                ]}
-                onChange={(value) => setSetting('direction', value)}
+              <RangeField
+                label="Rotate interval"
+                value={settings.rotateInterval}
+                suffix="ms"
+                min={1200}
+                max={8000}
+                disabled={!settings.autoRotate}
+                onChange={(value) => setSetting('rotateInterval', value)}
               />
               <ToggleRow
                 label="Pause on hover"
                 checked={settings.pauseOnHover}
+                disabled={!settings.autoRotate}
                 onChange={(checked) => setSetting('pauseOnHover', checked)}
               />
             </PanelSection>
@@ -283,21 +271,6 @@ const Panel: FC = () => {
                 label="Enable Clickable Links"
                 checked={settings.links}
                 onChange={(checked) => setSetting('links', checked)}
-              />
-              <ToggleRow
-                label="Hidden Edge Fade Color"
-                checked={settings.hiddenMaskColor}
-                onChange={(checked) => setSetting('hiddenMaskColor', checked)}
-              />
-              <p style={styles.descriptionText}>
-                The color used for the fading effect on both edges.
-              </p>
-
-              <ColorField
-                label="Edge Fade Color"
-                value={settings.maskColor}
-                disabled={settings.hiddenMaskColor}
-                onChange={(value) => setSetting('maskColor', value)}
               />
             </PanelSection>
 
@@ -328,45 +301,37 @@ const Panel: FC = () => {
             </PanelSection>
 
             {isMobileEditor ? null : (
-            <PanelSection title="Mobile">
-              <ToggleRow
-                label="Mobile Setting"
-                checked={enableMobileSettingsValue}
-                disabled={paidControlsDisabled}
-                onChange={(checked) => setSetting('enableMobileSettings', checked)}
-              />
-              <RangeField
-                label="Mobile Logo Height"
-                value={settings.mobileLogoHeight}
-                suffix="px"
-                min={20}
-                max={96}
-                disabled={mobileControlsDisabled}
-                onChange={(value) => setSetting('mobileLogoHeight', value)}
-              />
-              <RangeField
-                label="Mobile Speed"
-                value={settings.mobileSpeed}
-                min={10}
-                max={160}
-                disabled={mobileControlsDisabled}
-                onChange={(value) => setSetting('mobileSpeed', value)}
-              />
-              <RangeField
-                label="Mobile Logo Spacing"
-                value={settings.mobileGap}
-                suffix="px"
-                min={8}
-                max={96}
-                disabled={mobileControlsDisabled}
-                onChange={(value) => setSetting('mobileGap', value)}
-              />
-              {isPremium ? null : (
-                <button type="button" style={styles.secondaryUpgradeButton} onClick={openUpgrade}>
-                  Upgrade to enable mobile settings
-                </button>
-              )}
-            </PanelSection>
+              <PanelSection title="Mobile">
+                <ToggleRow
+                  label="Mobile Setting"
+                  checked={enableMobileSettingsValue}
+                  disabled={paidControlsDisabled}
+                  onChange={(checked) => setSetting('enableMobileSettings', checked)}
+                />
+                <RangeField
+                  label="Mobile Logo Height"
+                  value={settings.mobileLogoHeight}
+                  suffix="px"
+                  min={20}
+                  max={72}
+                  disabled={mobileControlsDisabled}
+                  onChange={(value) => setSetting('mobileLogoHeight', value)}
+                />
+                <RangeField
+                  label="Mobile Logo Spacing"
+                  value={settings.mobileGap}
+                  suffix="px"
+                  min={8}
+                  max={56}
+                  disabled={mobileControlsDisabled}
+                  onChange={(value) => setSetting('mobileGap', value)}
+                />
+                {isPremium ? null : (
+                  <button type="button" style={styles.secondaryUpgradeButton} onClick={openUpgrade}>
+                    Upgrade to enable mobile settings
+                  </button>
+                )}
+              </PanelSection>
             )}
 
             <section style={styles.helpSection}>
@@ -381,7 +346,7 @@ const Panel: FC = () => {
               </button>
               {helpOpen ? (
                 <p style={styles.helpText}>
-                  Add or edit logos from the Zider Logo Loop dashboard CMS. Sort Number controls display order.
+                  The rotator keeps logo positions fixed and replaces them upward one by one.
                 </p>
               ) : null}
             </section>
@@ -452,37 +417,6 @@ const RangeField: FC<RangeFieldProps> = ({ label, value, suffix, min, max, disab
   );
 };
 
-type SegmentedFieldProps = {
-  label: string;
-  value: 'left' | 'right';
-  options: Array<{ label: string; value: 'left' | 'right' }>;
-  onChange: (value: 'left' | 'right') => void;
-};
-
-const SegmentedField: FC<SegmentedFieldProps> = ({ label, value, options, onChange }) => (
-  <div style={styles.field}>
-    <div style={styles.fieldHeader}>
-      <span style={styles.fieldLabel}>{label}</span>
-    </div>
-    <div style={styles.segmented}>
-      {options.map((option) => {
-        const selected = value === option.value;
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            style={{ ...styles.segmentButton, ...(selected ? styles.segmentButtonActive : undefined) }}
-            onClick={() => onChange(option.value)}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  </div>
-);
-
 type ToggleRowProps = {
   label: string;
   checked: boolean;
@@ -517,46 +451,6 @@ const ToggleRow: FC<ToggleRowProps> = ({ label, checked, disabled, onChange }) =
   </button>
 );
 
-type ColorFieldProps = {
-  label: string;
-  value: string;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-};
-
-const ColorField: FC<ColorFieldProps> = ({ label, value, disabled, onChange }) => {
-  const pickerValue = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#ffffff';
-
-  return (
-    <div style={{ ...styles.field, ...(disabled ? styles.disabledField : undefined) }}>
-      <div style={styles.fieldHeader}>
-        <span style={styles.fieldLabel}>{label}</span>
-      </div>
-      <div style={styles.colorRow}>
-        <label style={{ ...styles.colorSwatch, backgroundColor: pickerValue }}>
-          <input
-            type="color"
-            value={pickerValue}
-            disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
-            aria-label={`${label} picker`}
-            style={styles.colorPicker}
-          />
-        </label>
-        <input
-          type="text"
-          value={value}
-          disabled={disabled}
-          placeholder="#ffffff"
-          onChange={(event) => onChange(normalizeColorText(event.target.value))}
-          aria-label={`${label} color code`}
-          style={styles.colorTextInput}
-        />
-      </div>
-    </div>
-  );
-};
-
 function normalizePropValue(key: keyof SettingsState, value: unknown) {
   if (typeof defaults[key] === 'boolean') {
     return value === true || value === 'true';
@@ -573,16 +467,6 @@ function normalizeNumber(value: string, min: number, max: number) {
   }
 
   return Math.min(max, Math.max(min, numericValue));
-}
-
-function normalizeColorText(value: string) {
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue) {
-    return trimmedValue;
-  }
-
-  return trimmedValue.startsWith('#') ? trimmedValue : `#${trimmedValue}`;
 }
 
 function decodeAppInstance(instance: unknown): Record<string, unknown> {
@@ -609,7 +493,7 @@ function decodeAppInstance(instance: unknown): Record<string, unknown> {
 
     return JSON.parse(globalThis.atob(paddedPayload)) as Record<string, unknown>;
   } catch (error) {
-    console.warn('[ZIDER LOGO LOOP] Failed to decode app instance.', error);
+    console.warn('[ZIDER TRUSTED LOGO ROTATOR] Failed to decode app instance.', error);
     return {};
   }
 }
@@ -636,7 +520,7 @@ async function resolveEditorDevice(): Promise<EditorDevice> {
   try {
     candidates.push(JSON.stringify(await info.getViewMode()));
   } catch (error) {
-    console.warn('[ZIDER LOGO LOOP] Failed to resolve editor view mode.', error);
+    console.warn('[ZIDER TRUSTED LOGO ROTATOR] Failed to resolve editor view mode.', error);
   }
 
   return candidates.some(isMobileContext) ? 'mobile' : 'desktop';
@@ -718,7 +602,7 @@ const styles = {
   valueBox: {
     display: 'inline-flex',
     alignItems: 'center',
-    width: 68,
+    width: 76,
     height: 34,
     borderRadius: 6,
     background: '#EDF4FF',
@@ -747,28 +631,6 @@ const styles = {
     width: '100%',
     margin: '8px 0 0',
     accentColor: '#116DFF',
-  },
-  segmented: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 4,
-    padding: 3,
-    borderRadius: 8,
-    background: '#EDF1F6',
-  },
-  segmentButton: {
-    height: 30,
-    border: 0,
-    borderRadius: 6,
-    background: 'transparent',
-    color: '#34405A',
-    cursor: 'pointer',
-    fontSize: 13,
-  },
-  segmentButtonActive: {
-    background: '#FFFFFF',
-    color: '#116DFF',
-    boxShadow: '0 1px 2px rgba(22, 45, 61, 0.12)',
   },
   toggleRow: {
     display: 'flex',
@@ -826,42 +688,6 @@ const styles = {
   },
   switchThumbChecked: {
     transform: 'translateX(20px)',
-  },
-  colorRow: {
-    display: 'grid',
-    gridTemplateColumns: '38px 1fr',
-    gap: 10,
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  colorSwatch: {
-    position: 'relative',
-    width: 38,
-    height: 34,
-    borderRadius: 6,
-    border: '1px solid #C8D0DC',
-    overflow: 'hidden',
-    cursor: 'pointer',
-  },
-  colorPicker: {
-    position: 'absolute',
-    inset: -4,
-    width: 46,
-    height: 42,
-    border: 0,
-    padding: 0,
-    opacity: 0,
-    cursor: 'pointer',
-  },
-  colorTextInput: {
-    height: 34,
-    border: '1px solid #C8D0DC',
-    borderRadius: 6,
-    padding: '0 10px',
-    color: '#24304D',
-    fontSize: 13,
-    outline: 'none',
-    boxSizing: 'border-box',
   },
   descriptionText: {
     margin: '0 0 12px',

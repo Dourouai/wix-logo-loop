@@ -9,8 +9,8 @@ export default extensions.customElement({
     stretchByDefault: true,
   },
   height: {
-    defaultHeight: 96,
-    heightMode: 'FIXED',
+    defaultHeight: 50,
+    heightMode: 'AUTO',
   },
   installation: {
     autoAdd: false,
