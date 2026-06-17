@@ -253,7 +253,7 @@ componentHeight = 72px
 - `Visible logos`
 - `Logo height`
 - 不暴露 `gap`，组件根据宽度和 slot 数量自动计算间距。
-- Tablet visible logos 不暴露给用户，根据 Desktop visible logos 和 Mobile visible logos 自动推导。
+- Tablet 数量不提供单独配置，根据 Desktop visible logos 和 Mobile visible logos 自动推导。
 
 ### Motion
 

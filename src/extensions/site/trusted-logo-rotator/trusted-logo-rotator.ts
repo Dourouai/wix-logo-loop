@@ -55,7 +55,6 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
       'logo-height',
       'gap',
       'visible-count',
-      'tablet-visible-count',
       'mobile-visible-count',
       'auto-rotate',
       'rotate-interval',
@@ -505,12 +504,6 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
   }
 
   private resolveTabletVisibleCount() {
-    const legacyTabletCount = this.getAttribute('tablet-visible-count');
-
-    if (legacyTabletCount !== null && legacyTabletCount !== '') {
-      return this.getVisibleCountAttr('tablet-visible-count', TABLET_SLOT_COUNT);
-    }
-
     const desktopCount = this.getVisibleCountAttr('visible-count', DESKTOP_SLOT_COUNT);
     const mobileCount = this.getVisibleCountAttr('mobile-visible-count', MOBILE_SLOT_COUNT);
     const inferredCount = Math.round((desktopCount + mobileCount) / 2);
