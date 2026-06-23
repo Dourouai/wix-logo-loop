@@ -121,7 +121,7 @@ const styles: Record<string, CSSProperties> = {
   },
   cardHeader: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 20,
     marginBottom: 20,
@@ -173,10 +173,12 @@ const styles: Record<string, CSSProperties> = {
   },
   headerActions: {
     display: 'flex',
+    flexDirection: 'row',
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 10,
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
   },
   tableWrap: {
     border: '1px solid #9fc3ff',
@@ -756,11 +758,13 @@ const DashboardPage: FC = () => {
     setIsSaving(true);
 
     try {
+      const basePayload = copyEditableLogoItem(editorState.row?.rawItem);
+      const normalizedLink = link || null;
       const payload: LogoItem = {
-        ...copyEditableLogoItem(editorState.row?.rawItem),
+        ...basePayload,
         title,
         description,
-        link,
+        link: normalizedLink,
         image: form.image,
         sortNumber: parsedSortNumber,
       };
@@ -1105,7 +1109,7 @@ const DashboardPage: FC = () => {
                               </button>
                             </div>
                             <p style={styles.formHelp}>
-                              {editorState.form.imageLabel || 'Use SVG, PNG, JPG, or WebP. Keep logos compressed and transparent when possible.'}
+                              Use SVG, PNG, JPG, or WebP. Keep logos compressed and transparent when possible.
                             </p>
                             <input
                               ref={fileInputRef}
