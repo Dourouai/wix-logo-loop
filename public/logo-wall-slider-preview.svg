@@ -1,0 +1,34 @@
+<svg width="360" height="180" viewBox="0 0 360 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="360" height="180" rx="26" fill="#FBFAF5"/>
+  <rect x="1" y="1" width="358" height="178" rx="25" stroke="#ECE7D8" stroke-width="2"/>
+  <g opacity="0.95">
+    <rect x="32" y="38" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#FFE071"/>
+    <rect x="116" y="38" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#E9E3D2"/>
+    <rect x="200" y="38" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#E9E3D2"/>
+    <rect x="284" y="38" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#E9E3D2"/>
+    <rect x="8" y="94" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#E9E3D2"/>
+    <rect x="92" y="94" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#E9E3D2"/>
+    <rect x="176" y="94" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#E9E3D2"/>
+    <rect x="260" y="94" width="68" height="34" rx="10" fill="#FFFFFF" stroke="#E9E3D2"/>
+  </g>
+  <path d="M51 55h30" stroke="#FFB800" stroke-width="6" stroke-linecap="round"/>
+  <path d="M132 55h36" stroke="#1264FF" stroke-width="6" stroke-linecap="round"/>
+  <path d="M216 55h36" stroke="#16A765" stroke-width="6" stroke-linecap="round"/>
+  <path d="M300 55h36" stroke="#F45D48" stroke-width="6" stroke-linecap="round"/>
+  <path d="M27 111h30" stroke="#A0A7B4" stroke-width="6" stroke-linecap="round"/>
+  <path d="M108 111h36" stroke="#111827" stroke-width="6" stroke-linecap="round"/>
+  <path d="M192 111h36" stroke="#0EA5E9" stroke-width="6" stroke-linecap="round"/>
+  <path d="M276 111h36" stroke="#8B5CF6" stroke-width="6" stroke-linecap="round"/>
+  <rect width="76" height="180" fill="url(#leftFade)"/>
+  <rect x="284" width="76" height="180" fill="url(#rightFade)"/>
+  <defs>
+    <linearGradient id="leftFade" x1="0" y1="90" x2="76" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFAF5"/>
+      <stop offset="1" stop-color="#FBFAF5" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rightFade" x1="360" y1="90" x2="284" y2="90" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFAF5"/>
+      <stop offset="1" stop-color="#FBFAF5" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+</svg>

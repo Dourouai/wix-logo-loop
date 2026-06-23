@@ -391,11 +391,11 @@ export default class ZiderTrustedLogoRotator extends HTMLElement {
     return `
       <${tag} class="zider-rotator-slot" ${href} data-slot-index="${index}" style="cursor:${cursor};">
         <span class="zider-rotator-logo zider-rotator-logo-current">
-          <img class="zider-rotator-image" src="${escapeAttr(currentSrc)}" alt="${escapeAttr(logo.alt)}" decoding="async" fetchpriority="${index === 0 ? 'high' : 'low'}" />
+          <img class="zider-rotator-image" src="${escapeAttr(currentSrc)}" alt="${escapeAttr(logo.alt)}" decoding="async" loading="eager" fetchpriority="${index === 0 ? 'high' : 'low'}" />
         </span>
         ${canRotate && nextLogo ? `
           <span class="zider-rotator-logo zider-rotator-logo-next" aria-hidden="true">
-            <img class="zider-rotator-image" src="${escapeAttr(nextSrc)}" alt="" decoding="async" fetchpriority="low" />
+            <img class="zider-rotator-image" src="${escapeAttr(nextSrc)}" alt="" decoding="async" loading="lazy" fetchpriority="low" />
           </span>
         ` : ''}
       </${tag}>
@@ -670,11 +670,23 @@ async function queryOrderedLogoItems(collectionId: string, limit: number) {
 }
 
 async function fetchOrderedLogoItems(collectionId: string, limit: number) {
-  const result = await items
+  const numberedResult = await items
     .query(collectionId)
+    .isNotEmpty('sortNumber')
+    .ascending('sortNumber')
     .limit(limit)
     .find();
-  const sortedItems = sortLogoItems(result.items as LogoItem[]).slice(0, limit);
+  const sortedItems = sortLogoItems(numberedResult.items as LogoItem[]).slice(0, limit);
+
+  if (sortedItems.length < limit) {
+    const emptyResult = await items
+      .query(collectionId)
+      .isEmpty('sortNumber')
+      .limit(limit - sortedItems.length)
+      .find();
+
+    sortedItems.push(...(emptyResult.items as LogoItem[]));
+  }
 
   writePersistedLogoItems(collectionId, limit, sortedItems);
 

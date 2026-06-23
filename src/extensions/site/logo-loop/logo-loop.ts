@@ -14,6 +14,7 @@ const MOBILE_LOGO_IMAGE_TRANSFORM_HEIGHT = 160;
 const LOGO_ITEMS_CACHE_TTL_MS = 60_000;
 const PERSISTED_LOGO_ITEMS_CACHE_TTL_MS = 10 * 60_000;
 const PERSISTED_LOGO_ITEMS_CACHE_PREFIX = 'zider-logo-loop:items:v2';
+const RESIZE_ANIMATION_DEBOUNCE_MS = 120;
 
 type LogoItem = {
   image?: unknown;
@@ -74,6 +75,7 @@ export default class ZiderLogoLoop extends HTMLElement {
   private renderedUsesMobileValues = false;
   private renderTimeoutId?: number;
   private animationFrameId?: number;
+  private resizeTimeoutId?: number;
   private resizeObserver?: ResizeObserver;
 
   connectedCallback() {
@@ -87,7 +89,7 @@ export default class ZiderLogoLoop extends HTMLElement {
         return;
       }
 
-      this.scheduleAnimation();
+      this.scheduleResizeAnimation();
     });
     this.resizeObserver.observe(this);
   }
@@ -95,6 +97,7 @@ export default class ZiderLogoLoop extends HTMLElement {
   disconnectedCallback() {
     this.resizeObserver?.disconnect();
     this.cancelQueuedRender();
+    this.cancelResizeAnimation();
     this.cancelScheduledAnimation();
   }
 
@@ -339,11 +342,12 @@ export default class ZiderLogoLoop extends HTMLElement {
     const href = tag === 'a' ? ` href="${escapeAttr(logo.link)}" target="_blank" rel="noopener noreferrer"` : '';
     const cursor = tag === 'a' ? 'pointer' : 'default';
     const fetchPriority = index < INITIAL_IMAGE_READY_COUNT ? 'high' : 'low';
+    const loading = index < INITIAL_IMAGE_READY_COUNT ? 'eager' : 'lazy';
     const src = resolveImageUrl(logo.imageSource, config);
 
     return `
       <${tag} class="zider-logo-item" ${href}>
-        <img class="zider-logo-image" src="${escapeAttr(src)}" alt="${escapeAttr(logo.alt)}" decoding="async" fetchpriority="${fetchPriority}" style="cursor:${cursor};" />
+        <img class="zider-logo-image" src="${escapeAttr(src)}" alt="${escapeAttr(logo.alt)}" decoding="async" loading="${loading}" fetchpriority="${fetchPriority}" style="cursor:${cursor};" />
       </${tag}>
     `;
   }
@@ -431,17 +435,20 @@ export default class ZiderLogoLoop extends HTMLElement {
       return;
     }
 
-    const maxCloneCount = baseChildren.length * Math.max(Math.ceil(containerWidth / baseWidth) + 1, 2);
-    let cloneCount = 0;
+    const cloneCycles = Math.max(Math.ceil(containerWidth / baseWidth), 1);
+    const maxCloneCount = baseChildren.length * Math.max(cloneCycles + 1, 2);
+    const fragment = document.createDocumentFragment();
+    const cloneCount = Math.min(cloneCycles * baseChildren.length, maxCloneCount);
 
-    while (track.scrollWidth < containerWidth + baseWidth && cloneCount < maxCloneCount) {
-      const child = baseChildren[cloneCount % baseChildren.length];
+    for (let index = 0; index < cloneCount; index += 1) {
+      const child = baseChildren[index % baseChildren.length];
       const clone = child.cloneNode(true) as HTMLElement;
 
       clone.setAttribute('data-zider-clone', 'true');
-      track.appendChild(clone);
-      cloneCount += 1;
+      fragment.appendChild(clone);
     }
+
+    track.appendChild(fragment);
 
     const distance = Math.max(baseWidth, 1);
     const duration = Math.max(distance / Math.max(config.speed, 1), 6);
@@ -479,6 +486,22 @@ export default class ZiderLogoLoop extends HTMLElement {
       this.animationFrameId = undefined;
       this.startAnimation();
     });
+  }
+
+  private scheduleResizeAnimation() {
+    this.cancelResizeAnimation();
+
+    this.resizeTimeoutId = window.setTimeout(() => {
+      this.resizeTimeoutId = undefined;
+      this.scheduleAnimation();
+    }, RESIZE_ANIMATION_DEBOUNCE_MS);
+  }
+
+  private cancelResizeAnimation() {
+    if (this.resizeTimeoutId !== undefined) {
+      window.clearTimeout(this.resizeTimeoutId);
+      this.resizeTimeoutId = undefined;
+    }
   }
 
   private cancelScheduledAnimation() {
@@ -546,11 +569,23 @@ async function queryOrderedLogoItems(collectionId: string, limit: number) {
 }
 
 async function fetchOrderedLogoItems(collectionId: string, limit: number) {
-  const result = await items
+  const numberedResult = await items
     .query(collectionId)
+    .isNotEmpty('sortNumber')
+    .ascending('sortNumber')
     .limit(limit)
     .find();
-  const sortedItems = sortLogoItems(result.items as LogoItem[]).slice(0, limit);
+  const sortedItems = sortLogoItems(numberedResult.items as LogoItem[]).slice(0, limit);
+
+  if (sortedItems.length < limit) {
+    const emptyResult = await items
+      .query(collectionId)
+      .isEmpty('sortNumber')
+      .limit(limit - sortedItems.length)
+      .find();
+
+    sortedItems.push(...(emptyResult.items as LogoItem[]));
+  }
 
   writePersistedLogoItems(collectionId, limit, sortedItems);
 
