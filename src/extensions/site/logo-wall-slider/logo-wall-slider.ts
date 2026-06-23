@@ -358,7 +358,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           border-radius: var(--zider-wall-radius);
           background: var(--zider-wall-card);
           border: ${config.showBorder && config.cardBorderWidth > 0 ? 'var(--zider-wall-card-border-width) solid var(--zider-wall-border)' : '0'};
-          box-shadow: ${config.showShadow ? '0 10px 28px rgba(15, 23, 52, 0.06)' : 'none'};
+          box-shadow: ${config.showShadow ? '0 4px 14px rgba(15, 23, 52, 0.035)' : 'none'};
           overflow: hidden;
           opacity: 0.72;
         }
@@ -513,7 +513,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           border: ${config.showBorder && config.cardBorderWidth > 0 ? 'var(--zider-wall-card-border-width) solid var(--zider-wall-border)' : '0'};
           border-radius: var(--zider-wall-radius);
           background: var(--zider-wall-card);
-          box-shadow: ${config.showShadow ? '0 10px 28px rgba(15, 23, 52, 0.08)' : 'none'};
+          box-shadow: ${config.showShadow ? '0 4px 14px rgba(15, 23, 52, 0.04)' : 'none'};
           box-sizing: border-box;
           overflow: hidden;
           transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -522,7 +522,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
         .zider-wall-card:hover {
           transform: translateY(-2px);
           border-color: var(--zider-wall-highlight);
-          box-shadow: ${config.showShadow ? '0 14px 34px rgba(15, 23, 52, 0.12)' : 'none'};
+          box-shadow: ${config.showShadow ? '0 6px 18px rgba(15, 23, 52, 0.055)' : 'none'};
         }
 
         .zider-wall-image {
