@@ -7,7 +7,7 @@ import {
 import '@wix/design-system/styles.global.css';
 
 type DirectionMode = 'alternate' | 'left' | 'right';
-type StylePreset = 'soft-cards' | 'clean-enterprise' | 'borderless' | 'compact-wall';
+type StylePreset = 'soft-cards' | 'clean-enterprise' | 'borderless' | 'compact-wall' | 'showcase' | 'pill-cards';
 
 type SettingsState = {
   stylePreset: StylePreset;
@@ -18,6 +18,10 @@ type SettingsState = {
   gap: string;
   rowGap: string;
   cardRadius: string;
+  backgroundRadius: string;
+  backgroundBorderWidth: string;
+  backgroundBorderColor: string;
+  cardBorderWidth: string;
   speed: string;
   directionMode: DirectionMode;
   pauseOnHover: boolean;
@@ -47,34 +51,39 @@ type EditorDevice = 'desktop' | 'mobile';
 
 const APP_ID = 'f1615a5b-65ed-4121-ae57-f2194f350030';
 const PREMIUM_PLAN_ID = 'plus';
+const TRANSPARENT_COLOR = 'transparent';
 
 const defaults: SettingsState = {
   stylePreset: 'soft-cards',
   rows: '2',
-  cardWidth: '160',
-  cardHeight: '78',
-  logoHeight: '46',
-  gap: '20',
+  cardWidth: '170',
+  cardHeight: '86',
+  logoHeight: '44',
+  gap: '22',
   rowGap: '18',
   cardRadius: '16',
-  speed: '40',
+  backgroundRadius: '32',
+  backgroundBorderWidth: '0',
+  backgroundBorderColor: '#ece7d8',
+  cardBorderWidth: '1',
+  speed: '38',
   directionMode: 'alternate',
   pauseOnHover: true,
-  backgroundColor: '#fbfaf5',
+  backgroundColor: 'rgba(255,255,255,0)',
   cardColor: '#ffffff',
   borderColor: '#ece7d8',
   highlightColor: '#ffd95a',
-  hiddenMaskColor: false,
-  maskColor: '#fbfaf5',
+  hiddenMaskColor: true,
+  maskColor: 'rgba(255,255,255,0)',
   showBorder: true,
   showShadow: true,
   links: true,
   grayMode: false,
   enableMobileSettings: false,
   mobileRows: '3',
-  mobileCardWidth: '104',
-  mobileCardHeight: '54',
-  mobileLogoHeight: '28',
+  mobileCardWidth: '112',
+  mobileCardHeight: '62',
+  mobileLogoHeight: '30',
   mobileGap: '10',
   mobileRowGap: '10',
   mobileSpeed: '32',
@@ -90,6 +99,10 @@ const propMap = {
   gap: 'gap',
   rowGap: 'row-gap',
   cardRadius: 'card-radius',
+  backgroundRadius: 'background-radius',
+  backgroundBorderWidth: 'background-border-width',
+  backgroundBorderColor: 'background-border-color',
+  cardBorderWidth: 'card-border-width',
   speed: 'speed',
   directionMode: 'direction-mode',
   pauseOnHover: 'pause-on-hover',
@@ -116,56 +129,64 @@ const propMap = {
 
 type PresetDefinition = {
   label: string;
-  description: string;
+  icon: string;
   settings: Partial<SettingsState>;
 };
 
 const stylePresets: Record<StylePreset, PresetDefinition> = {
   'soft-cards': {
-    label: 'Soft Cards',
-    description: 'Warm background, white cards, soft shadow.',
+    label: 'Soft',
+    icon: '2R',
     settings: {
       rows: '2',
-      cardWidth: '160',
-      cardHeight: '78',
-      logoHeight: '46',
-      gap: '20',
+      cardWidth: '170',
+      cardHeight: '86',
+      logoHeight: '44',
+      gap: '22',
       rowGap: '18',
       cardRadius: '16',
-      speed: '40',
+      backgroundRadius: '32',
+      backgroundBorderWidth: '0',
+      backgroundBorderColor: '#ece7d8',
+      cardBorderWidth: '1',
+      speed: '38',
       mobileRows: '3',
-      mobileCardWidth: '104',
-      mobileCardHeight: '54',
-      mobileLogoHeight: '28',
+      mobileCardWidth: '112',
+      mobileCardHeight: '62',
+      mobileLogoHeight: '30',
       mobileGap: '10',
       mobileRowGap: '10',
       mobileSpeed: '32',
-      backgroundColor: '#fbfaf5',
+      backgroundColor: 'rgba(255,255,255,0)',
       cardColor: '#ffffff',
       borderColor: '#ece7d8',
       highlightColor: '#ffd95a',
-      hiddenMaskColor: false,
-      maskColor: '#fbfaf5',
+      hiddenMaskColor: true,
+      maskColor: 'rgba(255,255,255,0)',
       showBorder: true,
       showShadow: true,
     },
   },
   'clean-enterprise': {
-    label: 'Clean Enterprise',
-    description: 'White surface, fine border, minimal depth.',
+    label: 'Clean',
+    icon: 'CL',
     settings: {
       rows: '2',
-      cardWidth: '164',
-      cardHeight: '76',
+      cardWidth: '176',
+      cardHeight: '84',
       logoHeight: '44',
       gap: '18',
       rowGap: '16',
       cardRadius: '10',
+      backgroundRadius: '24',
+      backgroundBorderWidth: '1',
+      backgroundBorderColor: '#e4e9f1',
+      cardBorderWidth: '1',
       speed: '36',
       mobileRows: '3',
-      mobileCardWidth: '106',
-      mobileCardHeight: '54',
-      mobileLogoHeight: '28',
+      mobileCardWidth: '112',
+      mobileCardHeight: '60',
+      mobileLogoHeight: '30',
       mobileGap: '10',
       mobileRowGap: '10',
       mobileSpeed: '30',
@@ -173,23 +194,27 @@ const stylePresets: Record<StylePreset, PresetDefinition> = {
       cardColor: '#ffffff',
       borderColor: '#e4e9f1',
       highlightColor: '#116dff',
-      hiddenMaskColor: false,
-      maskColor: '#ffffff',
+      hiddenMaskColor: true,
+      maskColor: 'rgba(255,255,255,0)',
       showBorder: true,
       showShadow: false,
     },
   },
   borderless: {
-    label: 'Borderless',
-    description: 'Transparent surface, no card frame.',
+    label: 'Bare',
+    icon: 'BR',
     settings: {
       rows: '2',
-      cardWidth: '156',
-      cardHeight: '70',
-      logoHeight: '42',
+      cardWidth: '168',
+      cardHeight: '78',
+      logoHeight: '46',
       gap: '24',
       rowGap: '16',
       cardRadius: '0',
+      backgroundRadius: '0',
+      backgroundBorderWidth: '0',
+      backgroundBorderColor: 'transparent',
+      cardBorderWidth: '0',
       speed: '42',
       mobileRows: '3',
       mobileCardWidth: '100',
@@ -209,16 +234,20 @@ const stylePresets: Record<StylePreset, PresetDefinition> = {
     },
   },
   'compact-wall': {
-    label: 'Compact Wall',
-    description: 'Smaller cards, three rows, denser wall.',
+    label: 'Wall',
+    icon: '3R',
     settings: {
       rows: '3',
-      cardWidth: '136',
-      cardHeight: '64',
+      cardWidth: '144',
+      cardHeight: '70',
       logoHeight: '36',
       gap: '14',
       rowGap: '12',
       cardRadius: '12',
+      backgroundRadius: '24',
+      backgroundBorderWidth: '0',
+      backgroundBorderColor: '#e5eaf1',
+      cardBorderWidth: '1',
       speed: '34',
       mobileRows: '3',
       mobileCardWidth: '96',
@@ -227,14 +256,80 @@ const stylePresets: Record<StylePreset, PresetDefinition> = {
       mobileGap: '8',
       mobileRowGap: '8',
       mobileSpeed: '30',
-      backgroundColor: '#f8fafc',
+      backgroundColor: '#ffffff',
       cardColor: '#ffffff',
       borderColor: '#e5eaf1',
       highlightColor: '#54a6ff',
-      hiddenMaskColor: false,
-      maskColor: '#f8fafc',
+      hiddenMaskColor: true,
+      maskColor: 'rgba(255,255,255,0)',
       showBorder: true,
       showShadow: true,
+    },
+  },
+  showcase: {
+    label: 'Hero',
+    icon: 'LG',
+    settings: {
+      rows: '2',
+      cardWidth: '192',
+      cardHeight: '96',
+      logoHeight: '52',
+      gap: '22',
+      rowGap: '18',
+      cardRadius: '14',
+      backgroundRadius: '30',
+      backgroundBorderWidth: '1',
+      backgroundBorderColor: '#e8edf4',
+      cardBorderWidth: '1',
+      speed: '34',
+      mobileRows: '2',
+      mobileCardWidth: '126',
+      mobileCardHeight: '70',
+      mobileLogoHeight: '36',
+      mobileGap: '12',
+      mobileRowGap: '12',
+      mobileSpeed: '30',
+      backgroundColor: '#ffffff',
+      cardColor: '#ffffff',
+      borderColor: '#e8edf4',
+      highlightColor: '#116dff',
+      hiddenMaskColor: true,
+      maskColor: 'rgba(255,255,255,0)',
+      showBorder: true,
+      showShadow: true,
+    },
+  },
+  'pill-cards': {
+    label: 'Pill',
+    icon: 'PL',
+    settings: {
+      rows: '2',
+      cardWidth: '152',
+      cardHeight: '68',
+      logoHeight: '36',
+      gap: '16',
+      rowGap: '14',
+      cardRadius: '34',
+      backgroundRadius: '28',
+      backgroundBorderWidth: '0',
+      backgroundBorderColor: '#e8edf4',
+      cardBorderWidth: '1',
+      speed: '42',
+      mobileRows: '3',
+      mobileCardWidth: '104',
+      mobileCardHeight: '54',
+      mobileLogoHeight: '28',
+      mobileGap: '8',
+      mobileRowGap: '8',
+      mobileSpeed: '34',
+      backgroundColor: '#ffffff',
+      cardColor: '#ffffff',
+      borderColor: '#e8edf4',
+      highlightColor: '#ffbf2e',
+      hiddenMaskColor: true,
+      maskColor: 'rgba(255,255,255,0)',
+      showBorder: true,
+      showShadow: false,
     },
   },
 };
@@ -376,13 +471,9 @@ const Panel: FC = () => {
     setSettings((current) => ({
       ...current,
       hideWatermark: false,
-      grayMode: false,
-      enableMobileSettings: false,
     }));
 
     widget.setProp(propMap.hideWatermark, 'false');
-    widget.setProp(propMap.grayMode, 'false');
-    widget.setProp(propMap.enableMobileSettings, 'false');
   }, []);
 
   const openUpgrade = useCallback(() => {
@@ -396,9 +487,8 @@ const Panel: FC = () => {
   const isPremium = planStatus === 'premium';
   const paidControlsDisabled = !isPremium;
   const hideWatermarkValue = isPremium && settings.hideWatermark;
-  const grayModeValue = isPremium && settings.grayMode;
-  const enableMobileSettingsValue = isPremium && settings.enableMobileSettings;
-  const mobileControlsDisabled = paidControlsDisabled || !enableMobileSettingsValue;
+  const enableMobileSettingsValue = settings.enableMobileSettings;
+  const mobileControlsDisabled = !enableMobileSettingsValue;
   const isMobileEditor = editorDevice === 'mobile';
   const layoutTitle = isMobileEditor ? 'Mobile Layout' : 'Layout';
   const motionTitle = isMobileEditor ? 'Mobile Motion' : 'Motion';
@@ -487,6 +577,11 @@ const Panel: FC = () => {
                 checked={settings.links}
                 onChange={(checked) => setSetting('links', checked)}
               />
+              <ToggleRow
+                label="Gray Mode (Hover to Color)"
+                checked={settings.grayMode}
+                onChange={(checked) => setSetting('grayMode', checked)}
+              />
             </PanelSection>
 
             <CollapsibleSection
@@ -494,21 +589,57 @@ const Panel: FC = () => {
               open={advancedStyleOpen}
               onToggle={() => setAdvancedStyleOpen((current) => !current)}
             >
-              <RangeField label="Card radius" value={settings.cardRadius} suffix="px" min={0} max={40} onChange={(value) => setSetting('cardRadius', value)} />
+              <ColorField label="Background fill" value={settings.backgroundColor} onChange={(value) => setSetting('backgroundColor', value)} />
+              <RangeField
+                label="Background radius"
+                value={settings.backgroundRadius}
+                suffix="px"
+                min={0}
+                max={80}
+                onChange={(value) => setSetting('backgroundRadius', value)}
+              />
+              <RangeField
+                label="Background border width"
+                value={settings.backgroundBorderWidth}
+                suffix="px"
+                min={0}
+                max={12}
+                onChange={(value) => setSetting('backgroundBorderWidth', value)}
+              />
+              <ColorField
+                label="Background border color"
+                value={settings.backgroundBorderColor}
+                disabled={Number(settings.backgroundBorderWidth) <= 0}
+                onChange={(value) => setSetting('backgroundBorderColor', value)}
+              />
+              <ColorField label="Card fill" value={settings.cardColor} onChange={(value) => setSetting('cardColor', value)} />
+              <RangeField label="Card radius" value={settings.cardRadius} suffix="px" min={0} max={60} onChange={(value) => setSetting('cardRadius', value)} />
               <ToggleRow
                 label="Show card border"
                 checked={settings.showBorder}
                 onChange={(checked) => setSetting('showBorder', checked)}
+              />
+              <RangeField
+                label="Card border width"
+                value={settings.cardBorderWidth}
+                suffix="px"
+                min={0}
+                max={12}
+                disabled={!settings.showBorder}
+                onChange={(value) => setSetting('cardBorderWidth', value)}
+              />
+              <ColorField
+                label="Card border color"
+                value={settings.borderColor}
+                disabled={!settings.showBorder || Number(settings.cardBorderWidth) <= 0}
+                onChange={(value) => setSetting('borderColor', value)}
               />
               <ToggleRow
                 label="Show card shadow"
                 checked={settings.showShadow}
                 onChange={(checked) => setSetting('showShadow', checked)}
               />
-              <ColorField label="Background" value={settings.backgroundColor} onChange={(value) => setSetting('backgroundColor', value)} />
-              <ColorField label="Card" value={settings.cardColor} onChange={(value) => setSetting('cardColor', value)} />
-              <ColorField label="Border" value={settings.borderColor} onChange={(value) => setSetting('borderColor', value)} />
-              <ColorField label="Hover highlight" value={settings.highlightColor} onChange={(value) => setSetting('highlightColor', value)} />
+              <ColorField label="Hover border color" value={settings.highlightColor} onChange={(value) => setSetting('highlightColor', value)} />
               <ToggleRow
                 label="Hidden edge fade color"
                 checked={settings.hiddenMaskColor}
@@ -522,10 +653,10 @@ const Panel: FC = () => {
               />
             </CollapsibleSection>
 
-            <PanelSection title="Upgrade" alignTitle="center">
+            <PanelSection title="Branding" alignTitle="center">
               {isPremium ? null : (
                 <button type="button" style={styles.upgradeButton} onClick={openUpgrade}>
-                  Upgrade
+                  Upgrade to hide badge
                 </button>
               )}
               <ToggleRow
@@ -535,14 +666,8 @@ const Panel: FC = () => {
                 onChange={(checked) => setSetting('hideWatermark', checked)}
               />
               <p style={styles.descriptionText}>
-                If you want to hide the ZIDER badge, please upgrade app.
+                Hiding the ZIDER badge requires the Plus plan.
               </p>
-              <ToggleRow
-                label="Gray Mode (Hover to Color)"
-                checked={grayModeValue}
-                disabled={paidControlsDisabled}
-                onChange={(checked) => setSetting('grayMode', checked)}
-              />
             </PanelSection>
 
             {isMobileEditor ? null : (
@@ -550,7 +675,6 @@ const Panel: FC = () => {
                 <ToggleRow
                   label="Mobile Setting"
                   checked={enableMobileSettingsValue}
-                  disabled={paidControlsDisabled}
                   onChange={(checked) => setSetting('enableMobileSettings', checked)}
                 />
                 <RangeField label="Mobile rows" value={settings.mobileRows} min={1} max={3} disabled={mobileControlsDisabled} onChange={(value) => setSetting('mobileRows', value)} />
@@ -560,11 +684,6 @@ const Panel: FC = () => {
                 <RangeField label="Mobile column gap" value={settings.mobileGap} suffix="px" min={6} max={48} disabled={mobileControlsDisabled} onChange={(value) => setSetting('mobileGap', value)} />
                 <RangeField label="Mobile row gap" value={settings.mobileRowGap} suffix="px" min={6} max={48} disabled={mobileControlsDisabled} onChange={(value) => setSetting('mobileRowGap', value)} />
                 <RangeField label="Mobile speed" value={settings.mobileSpeed} min={8} max={140} disabled={mobileControlsDisabled} onChange={(value) => setSetting('mobileSpeed', value)} />
-                {isPremium ? null : (
-                  <button type="button" style={styles.secondaryUpgradeButton} onClick={openUpgrade}>
-                    Upgrade to enable mobile settings
-                  </button>
-                )}
               </PanelSection>
             )}
 
@@ -655,8 +774,10 @@ const PresetField: FC<PresetFieldProps> = ({ value, options, onChange }) => (
           style={{ ...styles.presetButton, ...(selected ? styles.presetButtonActive : undefined) }}
           onClick={() => onChange(option.value)}
         >
+          <span style={{ ...styles.presetIcon, ...(selected ? styles.presetIconActive : undefined) }}>
+            {option.icon}
+          </span>
           <span style={styles.presetTitle}>{option.label}</span>
-          <span style={styles.presetDescription}>{option.description}</span>
         </button>
       );
     })}
@@ -781,7 +902,12 @@ type ColorFieldProps = {
 };
 
 const ColorField: FC<ColorFieldProps> = ({ label, value, disabled, onChange }) => {
-  const pickerValue = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#ffffff';
+  const parsedColor = parseColorValue(value);
+  const pickerValue = parsedColor.hex;
+  const opacityValue = Math.round(parsedColor.alpha * 100);
+  const isTransparent = parsedColor.alpha === 0;
+  const applyColor = (hex: string) => onChange(formatColorWithOpacity(hex, parsedColor.alpha));
+  const applyOpacity = (opacity: number) => onChange(formatColorWithOpacity(pickerValue, opacity / 100));
 
   return (
     <div style={{ ...styles.field, ...(disabled ? styles.disabledField : undefined) }}>
@@ -789,25 +915,58 @@ const ColorField: FC<ColorFieldProps> = ({ label, value, disabled, onChange }) =
         <span style={styles.fieldLabel}>{label}</span>
       </div>
       <div style={styles.colorRow}>
-        <label style={{ ...styles.colorSwatch, backgroundColor: pickerValue }}>
+        <label
+          style={{
+            ...styles.colorSwatch,
+            ...(isTransparent ? styles.transparentSwatch : { backgroundColor: pickerValue }),
+          }}
+        >
           <input
             type="color"
             value={pickerValue}
             disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => applyColor(event.target.value)}
             aria-label={`${label} picker`}
             style={styles.colorPicker}
           />
         </label>
+        <div style={styles.colorInputGroup}>
+          <input
+            type="text"
+            value={value}
+            disabled={disabled}
+            placeholder="transparent"
+            onChange={(event) => onChange(normalizeColorText(event.target.value))}
+            aria-label={`${label} color code`}
+            style={styles.colorTextInput}
+          />
+          <button
+            type="button"
+            disabled={disabled || isTransparent}
+            onClick={() => onChange(TRANSPARENT_COLOR)}
+            style={{
+              ...styles.clearColorButton,
+              ...(disabled || isTransparent ? styles.clearColorButtonDisabled : undefined),
+            }}
+          >
+            Transparent
+          </button>
+        </div>
+      </div>
+      <div style={styles.opacityRow}>
+        <span style={styles.opacityLabel}>Opacity</span>
         <input
-          type="text"
-          value={value}
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={opacityValue}
           disabled={disabled}
-          placeholder="#ffffff"
-          onChange={(event) => onChange(normalizeColorText(event.target.value))}
-          aria-label={`${label} color code`}
-          style={styles.colorTextInput}
+          onChange={(event) => applyOpacity(Number(event.target.value))}
+          aria-label={`${label} opacity`}
+          style={styles.opacitySlider}
         />
+        <span style={styles.opacityValue}>{opacityValue}%</span>
       </div>
     </div>
   );
@@ -823,7 +982,11 @@ function normalizePropValue(key: keyof SettingsState, value: unknown) {
   }
 
   if (key === 'stylePreset') {
-    return value === 'clean-enterprise' || value === 'borderless' || value === 'compact-wall'
+    return value === 'clean-enterprise' ||
+      value === 'borderless' ||
+      value === 'compact-wall' ||
+      value === 'showcase' ||
+      value === 'pill-cards'
       ? value
       : 'soft-cards';
   }
@@ -843,12 +1006,118 @@ function normalizeNumber(value: string, min: number, max: number) {
 
 function normalizeColorText(value: string) {
   const trimmedValue = value.trim();
+  const lowerValue = trimmedValue.toLowerCase();
 
   if (!trimmedValue) {
+    return TRANSPARENT_COLOR;
+  }
+
+  if (lowerValue === 'transparent' || lowerValue === 'none') {
+    return TRANSPARENT_COLOR;
+  }
+
+  if (/^rgba?\(/i.test(trimmedValue)) {
     return trimmedValue;
   }
 
   return trimmedValue.startsWith('#') ? trimmedValue : `#${trimmedValue}`;
+}
+
+type ParsedColor = {
+  hex: string;
+  alpha: number;
+};
+
+function parseColorValue(value: string): ParsedColor {
+  const trimmedValue = value.trim();
+
+  if (isTransparentColor(trimmedValue)) {
+    return { hex: '#ffffff', alpha: 0 };
+  }
+
+  const longHexMatch = trimmedValue.match(/^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/);
+  if (longHexMatch) {
+    return {
+      hex: `#${longHexMatch[1]}`,
+      alpha: longHexMatch[2] ? normalizeAlpha(Number.parseInt(longHexMatch[2], 16) / 255) : 1,
+    };
+  }
+
+  const shortHexMatch = trimmedValue.match(/^#([0-9a-fA-F]{3})([0-9a-fA-F])?$/);
+  if (shortHexMatch) {
+    const [red, green, blue] = shortHexMatch[1].split('').map((char) => `${char}${char}`);
+    const alpha = shortHexMatch[2] ? Number.parseInt(`${shortHexMatch[2]}${shortHexMatch[2]}`, 16) / 255 : 1;
+
+    return {
+      hex: `#${red}${green}${blue}`,
+      alpha: normalizeAlpha(alpha),
+    };
+  }
+
+  const rgbMatch = trimmedValue.match(
+    /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i,
+  );
+  if (rgbMatch) {
+    return {
+      hex: rgbToHex(Number(rgbMatch[1]), Number(rgbMatch[2]), Number(rgbMatch[3])),
+      alpha: normalizeAlpha(rgbMatch[4] === undefined ? 1 : Number(rgbMatch[4])),
+    };
+  }
+
+  return { hex: '#ffffff', alpha: 1 };
+}
+
+function formatColorWithOpacity(hex: string, alpha: number) {
+  const normalizedAlpha = normalizeAlpha(alpha);
+
+  if (normalizedAlpha <= 0) {
+    return TRANSPARENT_COLOR;
+  }
+
+  if (normalizedAlpha >= 1) {
+    return hex.toLowerCase();
+  }
+
+  const { red, green, blue } = hexToRgb(hex);
+  return `rgba(${red}, ${green}, ${blue}, ${trimAlpha(normalizedAlpha)})`;
+}
+
+function normalizeAlpha(value: number) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+
+  return Math.min(1, Math.max(0, value));
+}
+
+function hexToRgb(hex: string) {
+  const normalizedHex = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.slice(1) : 'ffffff';
+
+  return {
+    red: Number.parseInt(normalizedHex.slice(0, 2), 16),
+    green: Number.parseInt(normalizedHex.slice(2, 4), 16),
+    blue: Number.parseInt(normalizedHex.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex(red: number, green: number, blue: number) {
+  return `#${[red, green, blue]
+    .map((channel) => Math.min(255, Math.max(0, channel)).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function trimAlpha(alpha: number) {
+  return alpha.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function isTransparentColor(value: string) {
+  const trimmedValue = value.trim().toLowerCase();
+
+  if (!trimmedValue || trimmedValue === TRANSPARENT_COLOR || trimmedValue === 'none') {
+    return true;
+  }
+
+  return /^rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(?:0|0?\.0+)\s*\)$/.test(trimmedValue);
 }
 
 function decodeAppInstance(instance: unknown): Record<string, unknown> {
@@ -981,39 +1250,57 @@ const styles = {
   },
   presetGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr',
-    gap: 8,
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 6,
     paddingTop: 4,
   },
   presetButton: {
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
     width: '100%',
+    minHeight: 68,
     border: '1px solid #D7DEE8',
     borderRadius: 8,
     background: '#FFFFFF',
     color: '#34405A',
     cursor: 'pointer',
-    padding: '10px 12px',
-    textAlign: 'left',
+    padding: '8px 4px',
+    textAlign: 'center',
   },
   presetButtonActive: {
     borderColor: '#116DFF',
     background: '#F2F7FF',
     boxShadow: '0 1px 3px rgba(17, 109, 255, 0.14)',
   },
+  presetIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 26,
+    height: 22,
+    borderRadius: 7,
+    background: '#EEF3F9',
+    color: '#34405A',
+    fontSize: 10,
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+  presetIconActive: {
+    background: '#116DFF',
+    color: '#FFFFFF',
+  },
   presetTitle: {
     color: '#0F1734',
-    fontSize: 13,
-    fontWeight: 700,
-    lineHeight: 1.25,
-  },
-  presetDescription: {
-    color: '#59657A',
     fontSize: 11,
-    lineHeight: 1.35,
+    fontWeight: 700,
+    lineHeight: 1.2,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   field: {
     padding: '10px 0',
@@ -1154,6 +1441,13 @@ const styles = {
     overflow: 'hidden',
     flex: '0 0 auto',
   },
+  transparentSwatch: {
+    backgroundColor: '#FFFFFF',
+    backgroundImage:
+      'linear-gradient(45deg, #D7DEE8 25%, transparent 25%), linear-gradient(-45deg, #D7DEE8 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #D7DEE8 75%), linear-gradient(-45deg, transparent 75%, #D7DEE8 75%)',
+    backgroundSize: '10px 10px',
+    backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0',
+  },
   colorPicker: {
     position: 'absolute',
     inset: 0,
@@ -1161,6 +1455,13 @@ const styles = {
     height: '100%',
     opacity: 0,
     cursor: 'pointer',
+  },
+  colorInputGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
+    flex: '1 1 auto',
   },
   colorTextInput: {
     width: '100%',
@@ -1171,6 +1472,43 @@ const styles = {
     fontSize: 13,
     padding: '0 10px',
     boxSizing: 'border-box',
+  },
+  clearColorButton: {
+    flex: '0 0 auto',
+    height: 34,
+    border: '1px solid #D7DEE8',
+    borderRadius: 6,
+    background: '#FFFFFF',
+    color: '#116DFF',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '0 10px',
+  },
+  clearColorButtonDisabled: {
+    color: '#9AA7B8',
+    cursor: 'not-allowed',
+    background: '#F7F8FA',
+  },
+  opacityRow: {
+    display: 'grid',
+    gridTemplateColumns: '58px 1fr 42px',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  opacityLabel: {
+    color: '#4F5D73',
+    fontSize: 12,
+  },
+  opacitySlider: {
+    width: '100%',
+    accentColor: '#116DFF',
+  },
+  opacityValue: {
+    color: '#4F5D73',
+    fontSize: 12,
+    textAlign: 'right',
   },
   manageButton: {
     width: '100%',

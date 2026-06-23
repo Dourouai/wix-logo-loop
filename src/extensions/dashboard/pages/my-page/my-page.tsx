@@ -65,16 +65,12 @@ type LogoEditorState = {
 
 type MediaFileDescriptor = Record<string, unknown>;
 
-type DashboardWithMediaManager = typeof dashboard & {
-  openMediaManager?: (options?: { category?: string; multiSelect?: boolean }) => Promise<{
-    items?: MediaFileDescriptor[];
-  } | undefined>;
-};
-
 const styles: Record<string, CSSProperties> = {
   pageShell: {
     minHeight: '100vh',
+    height: '100%',
     background: '#eef2f6',
+    position: 'relative',
   },
   contentWrap: {
     width: '100%',
@@ -309,11 +305,15 @@ const styles: Record<string, CSSProperties> = {
     position: 'fixed',
     inset: 0,
     zIndex: 1000,
+    width: '100vw',
+    minHeight: '100vh',
+    height: '100dvh',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
     background: 'rgba(5, 11, 45, 0.42)',
+    overflowY: 'auto',
   },
   modal: {
     width: '100%',
@@ -428,6 +428,16 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.4,
     margin: 0,
   },
+  formAlert: {
+    border: '1px solid #ffd2d2',
+    borderRadius: 6,
+    background: '#fff4f4',
+    color: '#a81919',
+    fontSize: 13,
+    lineHeight: 1.4,
+    margin: '8px 0 0',
+    padding: '8px 10px',
+  },
   modalActions: {
     gridColumn: '1 / -1',
     display: 'flex',
@@ -454,6 +464,7 @@ const DashboardPage: FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)), [totalCount]);
@@ -614,6 +625,7 @@ const DashboardPage: FC = () => {
   }, [siteId]);
 
   const openAddLogo = useCallback(() => {
+    setUploadError('');
     setEditorState({
       mode: 'add',
       form: createEmptyLogoForm(totalCount + 1),
@@ -621,6 +633,7 @@ const DashboardPage: FC = () => {
   }, [totalCount]);
 
   const openEditLogo = useCallback((row: LogoRow) => {
+    setUploadError('');
     setEditorState({
       mode: 'edit',
       row,
@@ -634,6 +647,7 @@ const DashboardPage: FC = () => {
     }
 
     setEditorState(null);
+    setUploadError('');
   }, [isSaving, isUploading]);
 
   const updateEditorForm = useCallback((patch: Partial<LogoFormState>) => {
@@ -647,7 +661,7 @@ const DashboardPage: FC = () => {
   }, []);
 
   const chooseMedia = useCallback(async () => {
-    const openMediaManager = (dashboard as DashboardWithMediaManager).openMediaManager;
+    const openMediaManager = dashboard.openMediaManager;
 
     if (!openMediaManager) {
       dashboard.showToast({
@@ -657,6 +671,7 @@ const DashboardPage: FC = () => {
     }
 
     try {
+      setUploadError('');
       const result = await openMediaManager({
         category: 'image',
         multiSelect: false,
@@ -681,6 +696,7 @@ const DashboardPage: FC = () => {
         imagePreview: resolveImageUrl(image.value),
         imageLabel: image.label,
       });
+      setUploadError('');
     } catch (error) {
       debugError('choose media:failed', error);
       dashboard.showToast({
@@ -706,6 +722,7 @@ const DashboardPage: FC = () => {
     }
 
     setIsUploading(true);
+    setUploadError('');
 
     try {
       const image = await uploadImageToMediaManager(file);
@@ -720,13 +737,12 @@ const DashboardPage: FC = () => {
       });
     } catch (error) {
       debugError('upload image:failed', error);
-      dashboard.showToast({
-        message: 'Image upload failed. Please try Media Manager selection instead.',
-      });
+      setUploadError('Direct upload failed. Opening Wix Media Manager so you can upload or choose the logo there.');
+      await chooseMedia();
     } finally {
       setIsUploading(false);
     }
-  }, [updateEditorForm]);
+  }, [chooseMedia, updateEditorForm]);
 
   const saveLogo = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1012,7 +1028,7 @@ const DashboardPage: FC = () => {
                           {editorState.mode === 'edit' ? 'Edit logo' : 'Add logo'}
                         </h2>
                         <p style={styles.modalCopy}>
-                          Choose an image from Wix Media Manager or upload a new logo image.
+                          Choose or upload logos with Wix Media Manager. Local upload is kept as a fallback.
                         </p>
                       </div>
                       <button
@@ -1090,7 +1106,7 @@ const DashboardPage: FC = () => {
                           <div>
                             <div style={styles.pickerActions}>
                               <button type="button" style={styles.secondaryButton} onClick={chooseMedia}>
-                                Choose Media
+                                Media Manager
                               </button>
                               <button
                                 type="button"
@@ -1098,19 +1114,27 @@ const DashboardPage: FC = () => {
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={isUploading}
                               >
-                                {isUploading ? 'Uploading...' : 'Upload Image'}
+                                {isUploading ? 'Uploading...' : 'Local Upload'}
                               </button>
                               <button
                                 type="button"
                                 style={styles.itemButton}
-                                onClick={() => updateEditorForm({ image: '', imagePreview: '', imageLabel: '' })}
+                                onClick={() => {
+                                  setUploadError('');
+                                  updateEditorForm({ image: '', imagePreview: '', imageLabel: '' });
+                                }}
                               >
                                 Clear
                               </button>
                             </div>
                             <p style={styles.formHelp}>
-                              Use SVG, PNG, JPG, or WebP. Keep logos compressed and transparent when possible.
+                              Recommended: use Media Manager to upload or select SVG, PNG, JPG, or WebP logos.
                             </p>
+                            {uploadError ? (
+                              <p role="alert" style={styles.formAlert}>
+                                {uploadError}
+                              </p>
+                            ) : null}
                             <input
                               ref={fileInputRef}
                               type="file"

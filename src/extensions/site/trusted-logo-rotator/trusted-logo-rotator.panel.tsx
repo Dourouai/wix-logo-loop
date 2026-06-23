@@ -173,13 +173,9 @@ const Panel: FC = () => {
     setSettings((current) => ({
       ...current,
       hideWatermark: false,
-      grayMode: false,
-      enableMobileSettings: false,
     }));
 
     widget.setProp(propMap.hideWatermark, 'false');
-    widget.setProp(propMap.grayMode, 'false');
-    widget.setProp(propMap.enableMobileSettings, 'false');
   }, []);
 
   const openUpgrade = useCallback(() => {
@@ -193,9 +189,8 @@ const Panel: FC = () => {
   const isPremium = planStatus === 'premium';
   const paidControlsDisabled = !isPremium;
   const hideWatermarkValue = isPremium && settings.hideWatermark;
-  const grayModeValue = isPremium && settings.grayMode;
-  const enableMobileSettingsValue = isPremium && settings.enableMobileSettings;
-  const mobileControlsDisabled = paidControlsDisabled || !enableMobileSettingsValue;
+  const enableMobileSettingsValue = settings.enableMobileSettings;
+  const mobileControlsDisabled = !enableMobileSettingsValue;
   const isMobileEditor = editorDevice === 'mobile';
   const layoutTitle = isMobileEditor ? 'Mobile Layout' : 'Layout';
   const logoHeightValue = isMobileEditor ? settings.mobileLogoHeight : settings.logoHeight;
@@ -271,12 +266,20 @@ const Panel: FC = () => {
                 checked={settings.links}
                 onChange={(checked) => setSetting('links', checked)}
               />
+              <ToggleRow
+                label="Gray Mode (Hover to Color)"
+                checked={settings.grayMode}
+                onChange={(checked) => setSetting('grayMode', checked)}
+              />
+              <p style={styles.descriptionText}>
+                Convert all logos to grayscale by default. They will return to full color when hovered.
+              </p>
             </PanelSection>
 
-            <PanelSection title="Upgrade" alignTitle="center">
+            <PanelSection title="Branding" alignTitle="center">
               {isPremium ? null : (
                 <button type="button" style={styles.upgradeButton} onClick={openUpgrade}>
-                  Upgrade
+                  Upgrade to hide badge
                 </button>
               )}
               <ToggleRow
@@ -286,16 +289,7 @@ const Panel: FC = () => {
                 onChange={(checked) => setSetting('hideWatermark', checked)}
               />
               <p style={styles.descriptionText}>
-                If you want to hide the ZIDER badge, please upgrade app.
-              </p>
-              <ToggleRow
-                label="Gray Mode (Hover to Color)"
-                checked={grayModeValue}
-                disabled={paidControlsDisabled}
-                onChange={(checked) => setSetting('grayMode', checked)}
-              />
-              <p style={styles.descriptionText}>
-                Convert all logos to grayscale by default. They will return to full color when hovered.
+                Hiding the ZIDER badge requires the Plus plan.
               </p>
             </PanelSection>
 
@@ -304,7 +298,6 @@ const Panel: FC = () => {
                 <ToggleRow
                   label="Mobile Setting"
                   checked={enableMobileSettingsValue}
-                  disabled={paidControlsDisabled}
                   onChange={(checked) => setSetting('enableMobileSettings', checked)}
                 />
                 <RangeField
@@ -324,11 +317,6 @@ const Panel: FC = () => {
                   disabled={mobileControlsDisabled}
                   onChange={(value) => setSetting('mobileLogoHeight', value)}
                 />
-                {isPremium ? null : (
-                  <button type="button" style={styles.secondaryUpgradeButton} onClick={openUpgrade}>
-                    Upgrade to enable mobile settings
-                  </button>
-                )}
               </PanelSection>
             )}
 

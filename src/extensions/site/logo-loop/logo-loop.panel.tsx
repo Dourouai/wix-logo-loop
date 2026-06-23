@@ -28,6 +28,7 @@ type EditorDevice = 'desktop' | 'mobile';
 
 const APP_ID = 'f1615a5b-65ed-4121-ae57-f2194f350030';
 const PREMIUM_PLAN_ID = 'plus';
+const TRANSPARENT_COLOR = 'transparent';
 
 const defaults: SettingsState = {
   speed: '60',
@@ -182,13 +183,9 @@ const Panel: FC = () => {
     setSettings((current) => ({
       ...current,
       hideWatermark: false,
-      grayMode: false,
-      enableMobileSettings: false,
     }));
 
     widget.setProp(propMap.hideWatermark, 'false');
-    widget.setProp(propMap.grayMode, 'false');
-    widget.setProp(propMap.enableMobileSettings, 'false');
   }, []);
 
   const openUpgrade = useCallback(() => {
@@ -202,9 +199,8 @@ const Panel: FC = () => {
   const isPremium = planStatus === 'premium';
   const paidControlsDisabled = !isPremium;
   const hideWatermarkValue = isPremium && settings.hideWatermark;
-  const grayModeValue = isPremium && settings.grayMode;
-  const enableMobileSettingsValue = isPremium && settings.enableMobileSettings;
-  const mobileControlsDisabled = paidControlsDisabled || !enableMobileSettingsValue;
+  const enableMobileSettingsValue = settings.enableMobileSettings;
+  const mobileControlsDisabled = !enableMobileSettingsValue;
   const isMobileEditor = editorDevice === 'mobile';
   const layoutTitle = isMobileEditor ? 'Mobile Layout' : 'Layout';
   const motionTitle = isMobileEditor ? 'Mobile Motion' : 'Motion';
@@ -285,6 +281,14 @@ const Panel: FC = () => {
                 onChange={(checked) => setSetting('links', checked)}
               />
               <ToggleRow
+                label="Gray Mode (Hover to Color)"
+                checked={settings.grayMode}
+                onChange={(checked) => setSetting('grayMode', checked)}
+              />
+              <p style={styles.descriptionText}>
+                Convert all logos to grayscale by default. They will return to full color when hovered.
+              </p>
+              <ToggleRow
                 label="Hidden Edge Fade Color"
                 checked={settings.hiddenMaskColor}
                 onChange={(checked) => setSetting('hiddenMaskColor', checked)}
@@ -301,10 +305,10 @@ const Panel: FC = () => {
               />
             </PanelSection>
 
-            <PanelSection title="Upgrade" alignTitle="center">
+            <PanelSection title="Branding" alignTitle="center">
               {isPremium ? null : (
                 <button type="button" style={styles.upgradeButton} onClick={openUpgrade}>
-                  Upgrade
+                  Upgrade to hide badge
                 </button>
               )}
               <ToggleRow
@@ -314,16 +318,7 @@ const Panel: FC = () => {
                 onChange={(checked) => setSetting('hideWatermark', checked)}
               />
               <p style={styles.descriptionText}>
-                If you want to hide the ZIDER badge, please upgrade app.
-              </p>
-              <ToggleRow
-                label="Gray Mode (Hover to Color)"
-                checked={grayModeValue}
-                disabled={paidControlsDisabled}
-                onChange={(checked) => setSetting('grayMode', checked)}
-              />
-              <p style={styles.descriptionText}>
-                Convert all logos to grayscale by default. They will return to full color when hovered.
+                Hiding the ZIDER badge requires the Plus plan.
               </p>
             </PanelSection>
 
@@ -332,7 +327,6 @@ const Panel: FC = () => {
               <ToggleRow
                 label="Mobile Setting"
                 checked={enableMobileSettingsValue}
-                disabled={paidControlsDisabled}
                 onChange={(checked) => setSetting('enableMobileSettings', checked)}
               />
               <RangeField
@@ -361,11 +355,6 @@ const Panel: FC = () => {
                 disabled={mobileControlsDisabled}
                 onChange={(value) => setSetting('mobileGap', value)}
               />
-              {isPremium ? null : (
-                <button type="button" style={styles.secondaryUpgradeButton} onClick={openUpgrade}>
-                  Upgrade to enable mobile settings
-                </button>
-              )}
             </PanelSection>
             )}
 
@@ -525,7 +514,12 @@ type ColorFieldProps = {
 };
 
 const ColorField: FC<ColorFieldProps> = ({ label, value, disabled, onChange }) => {
-  const pickerValue = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#ffffff';
+  const parsedColor = parseColorValue(value);
+  const pickerValue = parsedColor.hex;
+  const opacityValue = Math.round(parsedColor.alpha * 100);
+  const isTransparent = parsedColor.alpha === 0;
+  const applyColor = (hex: string) => onChange(formatColorWithOpacity(hex, parsedColor.alpha));
+  const applyOpacity = (opacity: number) => onChange(formatColorWithOpacity(pickerValue, opacity / 100));
 
   return (
     <div style={{ ...styles.field, ...(disabled ? styles.disabledField : undefined) }}>
@@ -533,25 +527,58 @@ const ColorField: FC<ColorFieldProps> = ({ label, value, disabled, onChange }) =
         <span style={styles.fieldLabel}>{label}</span>
       </div>
       <div style={styles.colorRow}>
-        <label style={{ ...styles.colorSwatch, backgroundColor: pickerValue }}>
+        <label
+          style={{
+            ...styles.colorSwatch,
+            ...(isTransparent ? styles.transparentSwatch : { backgroundColor: pickerValue }),
+          }}
+        >
           <input
             type="color"
             value={pickerValue}
             disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => applyColor(event.target.value)}
             aria-label={`${label} picker`}
             style={styles.colorPicker}
           />
         </label>
+        <div style={styles.colorInputGroup}>
+          <input
+            type="text"
+            value={value}
+            disabled={disabled}
+            placeholder="transparent"
+            onChange={(event) => onChange(normalizeColorText(event.target.value))}
+            aria-label={`${label} color code`}
+            style={styles.colorTextInput}
+          />
+          <button
+            type="button"
+            disabled={disabled || isTransparent}
+            onClick={() => onChange(TRANSPARENT_COLOR)}
+            style={{
+              ...styles.clearColorButton,
+              ...(disabled || isTransparent ? styles.clearColorButtonDisabled : undefined),
+            }}
+          >
+            Transparent
+          </button>
+        </div>
+      </div>
+      <div style={styles.opacityRow}>
+        <span style={styles.opacityLabel}>Opacity</span>
         <input
-          type="text"
-          value={value}
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={opacityValue}
           disabled={disabled}
-          placeholder="#ffffff"
-          onChange={(event) => onChange(normalizeColorText(event.target.value))}
-          aria-label={`${label} color code`}
-          style={styles.colorTextInput}
+          onChange={(event) => applyOpacity(Number(event.target.value))}
+          aria-label={`${label} opacity`}
+          style={styles.opacitySlider}
         />
+        <span style={styles.opacityValue}>{opacityValue}%</span>
       </div>
     </div>
   );
@@ -577,12 +604,118 @@ function normalizeNumber(value: string, min: number, max: number) {
 
 function normalizeColorText(value: string) {
   const trimmedValue = value.trim();
+  const lowerValue = trimmedValue.toLowerCase();
 
   if (!trimmedValue) {
+    return TRANSPARENT_COLOR;
+  }
+
+  if (lowerValue === 'transparent' || lowerValue === 'none') {
+    return TRANSPARENT_COLOR;
+  }
+
+  if (/^rgba?\(/i.test(trimmedValue)) {
     return trimmedValue;
   }
 
   return trimmedValue.startsWith('#') ? trimmedValue : `#${trimmedValue}`;
+}
+
+type ParsedColor = {
+  hex: string;
+  alpha: number;
+};
+
+function parseColorValue(value: string): ParsedColor {
+  const trimmedValue = value.trim();
+
+  if (isTransparentColor(trimmedValue)) {
+    return { hex: '#ffffff', alpha: 0 };
+  }
+
+  const longHexMatch = trimmedValue.match(/^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/);
+  if (longHexMatch) {
+    return {
+      hex: `#${longHexMatch[1]}`,
+      alpha: longHexMatch[2] ? normalizeAlpha(Number.parseInt(longHexMatch[2], 16) / 255) : 1,
+    };
+  }
+
+  const shortHexMatch = trimmedValue.match(/^#([0-9a-fA-F]{3})([0-9a-fA-F])?$/);
+  if (shortHexMatch) {
+    const [red, green, blue] = shortHexMatch[1].split('').map((char) => `${char}${char}`);
+    const alpha = shortHexMatch[2] ? Number.parseInt(`${shortHexMatch[2]}${shortHexMatch[2]}`, 16) / 255 : 1;
+
+    return {
+      hex: `#${red}${green}${blue}`,
+      alpha: normalizeAlpha(alpha),
+    };
+  }
+
+  const rgbMatch = trimmedValue.match(
+    /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i,
+  );
+  if (rgbMatch) {
+    return {
+      hex: rgbToHex(Number(rgbMatch[1]), Number(rgbMatch[2]), Number(rgbMatch[3])),
+      alpha: normalizeAlpha(rgbMatch[4] === undefined ? 1 : Number(rgbMatch[4])),
+    };
+  }
+
+  return { hex: '#ffffff', alpha: 1 };
+}
+
+function formatColorWithOpacity(hex: string, alpha: number) {
+  const normalizedAlpha = normalizeAlpha(alpha);
+
+  if (normalizedAlpha <= 0) {
+    return TRANSPARENT_COLOR;
+  }
+
+  if (normalizedAlpha >= 1) {
+    return hex.toLowerCase();
+  }
+
+  const { red, green, blue } = hexToRgb(hex);
+  return `rgba(${red}, ${green}, ${blue}, ${trimAlpha(normalizedAlpha)})`;
+}
+
+function normalizeAlpha(value: number) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+
+  return Math.min(1, Math.max(0, value));
+}
+
+function hexToRgb(hex: string) {
+  const normalizedHex = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.slice(1) : 'ffffff';
+
+  return {
+    red: Number.parseInt(normalizedHex.slice(0, 2), 16),
+    green: Number.parseInt(normalizedHex.slice(2, 4), 16),
+    blue: Number.parseInt(normalizedHex.slice(4, 6), 16),
+  };
+}
+
+function rgbToHex(red: number, green: number, blue: number) {
+  return `#${[red, green, blue]
+    .map((channel) => Math.round(Math.min(255, Math.max(0, channel))).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function trimAlpha(alpha: number) {
+  return alpha.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function isTransparentColor(value: string) {
+  const trimmedValue = value.trim().toLowerCase();
+
+  if (!trimmedValue || trimmedValue === TRANSPARENT_COLOR || trimmedValue === 'none') {
+    return true;
+  }
+
+  return /^rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(?:0|0?\.0+)\s*\)$/.test(trimmedValue);
 }
 
 function decodeAppInstance(instance: unknown): Record<string, unknown> {
@@ -843,6 +976,13 @@ const styles = {
     overflow: 'hidden',
     cursor: 'pointer',
   },
+  transparentSwatch: {
+    backgroundColor: '#FFFFFF',
+    backgroundImage:
+      'linear-gradient(45deg, #D7DEE8 25%, transparent 25%), linear-gradient(-45deg, #D7DEE8 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #D7DEE8 75%), linear-gradient(-45deg, transparent 75%, #D7DEE8 75%)',
+    backgroundSize: '10px 10px',
+    backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0',
+  },
   colorPicker: {
     position: 'absolute',
     inset: -4,
@@ -853,7 +993,14 @@ const styles = {
     opacity: 0,
     cursor: 'pointer',
   },
+  colorInputGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
+  },
   colorTextInput: {
+    width: '100%',
     height: 34,
     border: '1px solid #C8D0DC',
     borderRadius: 6,
@@ -862,6 +1009,43 @@ const styles = {
     fontSize: 13,
     outline: 'none',
     boxSizing: 'border-box',
+  },
+  clearColorButton: {
+    flex: '0 0 auto',
+    height: 34,
+    border: '1px solid #C8D0DC',
+    borderRadius: 6,
+    background: '#FFFFFF',
+    color: '#116DFF',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '0 8px',
+  },
+  clearColorButtonDisabled: {
+    color: '#9AA7B8',
+    cursor: 'not-allowed',
+    background: '#F7F8FA',
+  },
+  opacityRow: {
+    display: 'grid',
+    gridTemplateColumns: '58px 1fr 42px',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  opacityLabel: {
+    color: '#4F5D73',
+    fontSize: 12,
+  },
+  opacitySlider: {
+    width: '100%',
+    accentColor: '#116DFF',
+  },
+  opacityValue: {
+    color: '#4F5D73',
+    fontSize: 12,
+    textAlign: 'right',
   },
   descriptionText: {
     margin: '0 0 12px',

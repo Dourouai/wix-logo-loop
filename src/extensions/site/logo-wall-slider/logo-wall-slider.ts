@@ -27,7 +27,7 @@ type LogoViewItem = {
 };
 
 type DirectionMode = 'alternate' | 'left' | 'right';
-type StylePreset = 'soft-cards' | 'clean-enterprise' | 'borderless' | 'compact-wall';
+type StylePreset = 'soft-cards' | 'clean-enterprise' | 'borderless' | 'compact-wall' | 'showcase' | 'pill-cards';
 
 type WallConfig = {
   useMobileValues: boolean;
@@ -38,6 +38,10 @@ type WallConfig = {
   gap: number;
   rowGap: number;
   cardRadius: number;
+  backgroundRadius: number;
+  backgroundBorderWidth: number;
+  backgroundBorderColor: string;
+  cardBorderWidth: number;
   speed: number;
   directionMode: DirectionMode;
   pauseOnHover: boolean;
@@ -62,6 +66,10 @@ type WallPresetConfig = {
   gap: number;
   rowGap: number;
   cardRadius: number;
+  backgroundRadius: number;
+  backgroundBorderWidth: number;
+  backgroundBorderColor: string;
+  cardBorderWidth: number;
   speed: number;
   mobileRows: number;
   mobileCardWidth: number;
@@ -96,6 +104,10 @@ export default class ZiderLogoWallSlider extends HTMLElement {
       'gap',
       'row-gap',
       'card-radius',
+      'background-radius',
+      'background-border-width',
+      'background-border-color',
+      'card-border-width',
       'speed',
       'direction-mode',
       'pause-on-hover',
@@ -226,6 +238,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
   private get config(): WallConfig {
     const useMobileValues = this.shouldUseMobileValues();
     const preset = getPresetConfig(this.getStylePresetAttr());
+    const legacyShowBorder = this.getBooleanAttr('show-border', preset.showBorder);
 
     return {
       useMobileValues,
@@ -235,7 +248,11 @@ export default class ZiderLogoWallSlider extends HTMLElement {
       logoHeight: this.getNumberAttr(useMobileValues ? 'mobile-logo-height' : 'logo-height', useMobileValues ? preset.mobileLogoHeight : preset.logoHeight, 20, 110),
       gap: this.getNumberAttr(useMobileValues ? 'mobile-gap' : 'gap', useMobileValues ? preset.mobileGap : preset.gap, 6, 80),
       rowGap: this.getNumberAttr(useMobileValues ? 'mobile-row-gap' : 'row-gap', useMobileValues ? preset.mobileRowGap : preset.rowGap, 6, 80),
-      cardRadius: this.getNumberAttr('card-radius', preset.cardRadius, 0, 40),
+      cardRadius: this.getNumberAttr('card-radius', preset.cardRadius, 0, 60),
+      backgroundRadius: this.getNumberAttr('background-radius', preset.backgroundRadius, 0, 80),
+      backgroundBorderWidth: this.getNumberAttr('background-border-width', preset.backgroundBorderWidth, 0, 12),
+      backgroundBorderColor: sanitizeColor(this.getAttribute('background-border-color') || preset.backgroundBorderColor),
+      cardBorderWidth: this.getNumberAttr('card-border-width', legacyShowBorder ? preset.cardBorderWidth : 0, 0, 12),
       speed: this.getNumberAttr(useMobileValues ? 'mobile-speed' : 'speed', useMobileValues ? preset.mobileSpeed : preset.speed, 8, 160),
       directionMode: this.getDirectionModeAttr(),
       pauseOnHover: this.getBooleanAttr('pause-on-hover', true),
@@ -245,7 +262,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
       highlightColor: sanitizeColor(this.getAttribute('highlight-color') || preset.highlightColor),
       hiddenMaskColor: this.getBooleanAttr('hidden-mask-color', preset.hiddenMaskColor),
       maskColor: sanitizeColor(this.getAttribute('mask-color') || preset.maskColor),
-      showBorder: this.getBooleanAttr('show-border', preset.showBorder),
+      showBorder: legacyShowBorder,
       showShadow: this.getBooleanAttr('show-shadow', preset.showShadow),
       links: this.getBooleanAttr('links', true),
       grayMode: this.getBooleanAttr('gray-mode', false),
@@ -279,6 +296,10 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           --zider-wall-gap: ${config.gap}px;
           --zider-wall-row-gap: ${config.rowGap}px;
           --zider-wall-radius: ${config.cardRadius}px;
+          --zider-wall-background-radius: ${config.backgroundRadius}px;
+          --zider-wall-background-border-width: ${config.backgroundBorderWidth}px;
+          --zider-wall-background-border: ${config.backgroundBorderColor};
+          --zider-wall-card-border-width: ${config.cardBorderWidth}px;
           --zider-wall-background: ${config.backgroundColor};
           --zider-wall-card: ${config.cardColor};
           --zider-wall-border: ${config.borderColor};
@@ -294,8 +315,8 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           overflow: hidden;
           box-sizing: border-box;
           padding: ${getVerticalPadding(config)}px 0;
-          border: ${config.showBorder ? '1px solid var(--zider-wall-border)' : '0'};
-          border-radius: 32px;
+          border: ${config.backgroundBorderWidth > 0 ? 'var(--zider-wall-background-border-width) solid var(--zider-wall-background-border)' : '0'};
+          border-radius: var(--zider-wall-background-radius);
           background: var(--zider-wall-background);
           animation: zider-wall-fade-in 220ms ease both;
         }
@@ -306,7 +327,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           position: absolute;
           top: 0;
           bottom: 0;
-          width: min(120px, 16vw);
+          width: min(56px, 8vw);
           z-index: 2;
           pointer-events: none;
         }
@@ -336,7 +357,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           height: var(--zider-wall-card-height);
           border-radius: var(--zider-wall-radius);
           background: var(--zider-wall-card);
-          border: 1px solid ${config.showBorder ? 'var(--zider-wall-border)' : 'transparent'};
+          border: ${config.showBorder && config.cardBorderWidth > 0 ? 'var(--zider-wall-card-border-width) solid var(--zider-wall-border)' : '0'};
           box-shadow: ${config.showShadow ? '0 10px 28px rgba(15, 23, 52, 0.06)' : 'none'};
           overflow: hidden;
           opacity: 0.72;
@@ -406,10 +427,14 @@ export default class ZiderLogoWallSlider extends HTMLElement {
         .zider-logo-wall {
           --zider-wall-card-width: ${config.cardWidth}px;
           --zider-wall-card-height: ${config.cardHeight}px;
-          --zider-wall-logo-height: ${Math.min(config.logoHeight, config.cardHeight - 16)}px;
+          --zider-wall-logo-height: ${Math.min(config.logoHeight, config.cardHeight - 20)}px;
           --zider-wall-gap: ${config.gap}px;
           --zider-wall-row-gap: ${config.rowGap}px;
           --zider-wall-radius: ${config.cardRadius}px;
+          --zider-wall-background-radius: ${config.backgroundRadius}px;
+          --zider-wall-background-border-width: ${config.backgroundBorderWidth}px;
+          --zider-wall-background-border: ${config.backgroundBorderColor};
+          --zider-wall-card-border-width: ${config.cardBorderWidth}px;
           --zider-wall-background: ${config.backgroundColor};
           --zider-wall-card: ${config.cardColor};
           --zider-wall-border: ${config.borderColor};
@@ -426,8 +451,8 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           overflow: hidden;
           box-sizing: border-box;
           padding: ${getVerticalPadding(config)}px 0;
-          border: ${config.showBorder ? '1px solid var(--zider-wall-border)' : '0'};
-          border-radius: 32px;
+          border: ${config.backgroundBorderWidth > 0 ? 'var(--zider-wall-background-border-width) solid var(--zider-wall-background-border)' : '0'};
+          border-radius: var(--zider-wall-background-radius);
           background: var(--zider-wall-background);
           isolation: isolate;
           animation: zider-wall-fade-in 220ms ease both;
@@ -439,7 +464,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           position: absolute;
           top: 0;
           bottom: 0;
-          width: min(120px, 16vw);
+          width: min(56px, 8vw);
           z-index: 3;
           pointer-events: none;
         }
@@ -485,7 +510,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           flex: 0 0 var(--zider-wall-card-width);
           width: var(--zider-wall-card-width);
           height: var(--zider-wall-card-height);
-          border: 1px solid ${config.showBorder ? 'var(--zider-wall-border)' : 'transparent'};
+          border: ${config.showBorder && config.cardBorderWidth > 0 ? 'var(--zider-wall-card-border-width) solid var(--zider-wall-border)' : '0'};
           border-radius: var(--zider-wall-radius);
           background: var(--zider-wall-card);
           box-shadow: ${config.showShadow ? '0 10px 28px rgba(15, 23, 52, 0.08)' : 'none'};
@@ -503,9 +528,9 @@ export default class ZiderLogoWallSlider extends HTMLElement {
         .zider-wall-image {
           display: block;
           width: auto;
-          max-width: calc(var(--zider-wall-card-width) - 34px);
-          max-height: calc(var(--zider-wall-card-height) - 18px);
-          height: var(--zider-wall-logo-height);
+          max-width: calc(var(--zider-wall-card-width) - 28px);
+          max-height: var(--zider-wall-logo-height);
+          height: auto;
           object-fit: contain;
           transition: filter 180ms ease, opacity 180ms ease;
         }
@@ -816,7 +841,13 @@ export default class ZiderLogoWallSlider extends HTMLElement {
   private getStylePresetAttr(): StylePreset {
     const value = this.getAttribute('style-preset');
 
-    if (value === 'clean-enterprise' || value === 'borderless' || value === 'compact-wall') {
+    if (
+      value === 'clean-enterprise' ||
+      value === 'borderless' ||
+      value === 'compact-wall' ||
+      value === 'showcase' ||
+      value === 'pill-cards'
+    ) {
       return value;
     }
 
@@ -827,42 +858,50 @@ export default class ZiderLogoWallSlider extends HTMLElement {
 const WALL_PRESETS: Record<StylePreset, WallPresetConfig> = {
   'soft-cards': {
     rows: 2,
-    cardWidth: 160,
-    cardHeight: 78,
-    logoHeight: 46,
-    gap: 20,
+    cardWidth: 170,
+    cardHeight: 86,
+    logoHeight: 44,
+    gap: 22,
     rowGap: 18,
     cardRadius: 16,
-    speed: 40,
+    backgroundRadius: 32,
+    backgroundBorderWidth: 0,
+    backgroundBorderColor: '#ece7d8',
+    cardBorderWidth: 1,
+    speed: 38,
     mobileRows: 3,
-    mobileCardWidth: 104,
-    mobileCardHeight: 54,
-    mobileLogoHeight: 28,
+    mobileCardWidth: 112,
+    mobileCardHeight: 62,
+    mobileLogoHeight: 30,
     mobileGap: 10,
     mobileRowGap: 10,
     mobileSpeed: 32,
-    backgroundColor: '#fbfaf5',
+    backgroundColor: 'rgba(255,255,255,0)',
     cardColor: '#ffffff',
     borderColor: '#ece7d8',
     highlightColor: '#ffd95a',
-    hiddenMaskColor: false,
-    maskColor: '#fbfaf5',
+    hiddenMaskColor: true,
+    maskColor: 'rgba(255,255,255,0)',
     showBorder: true,
     showShadow: true,
   },
   'clean-enterprise': {
     rows: 2,
-    cardWidth: 164,
-    cardHeight: 76,
+    cardWidth: 176,
+    cardHeight: 84,
     logoHeight: 44,
     gap: 18,
     rowGap: 16,
     cardRadius: 10,
+    backgroundRadius: 24,
+    backgroundBorderWidth: 1,
+    backgroundBorderColor: '#e4e9f1',
+    cardBorderWidth: 1,
     speed: 36,
     mobileRows: 3,
-    mobileCardWidth: 106,
-    mobileCardHeight: 54,
-    mobileLogoHeight: 28,
+    mobileCardWidth: 112,
+    mobileCardHeight: 60,
+    mobileLogoHeight: 30,
     mobileGap: 10,
     mobileRowGap: 10,
     mobileSpeed: 30,
@@ -870,19 +909,23 @@ const WALL_PRESETS: Record<StylePreset, WallPresetConfig> = {
     cardColor: '#ffffff',
     borderColor: '#e4e9f1',
     highlightColor: '#116dff',
-    hiddenMaskColor: false,
-    maskColor: '#ffffff',
+    hiddenMaskColor: true,
+    maskColor: 'rgba(255,255,255,0)',
     showBorder: true,
     showShadow: false,
   },
   borderless: {
     rows: 2,
-    cardWidth: 156,
-    cardHeight: 70,
-    logoHeight: 42,
+    cardWidth: 168,
+    cardHeight: 78,
+    logoHeight: 46,
     gap: 24,
     rowGap: 16,
     cardRadius: 0,
+    backgroundRadius: 0,
+    backgroundBorderWidth: 0,
+    backgroundBorderColor: 'transparent',
+    cardBorderWidth: 0,
     speed: 42,
     mobileRows: 3,
     mobileCardWidth: 100,
@@ -902,12 +945,16 @@ const WALL_PRESETS: Record<StylePreset, WallPresetConfig> = {
   },
   'compact-wall': {
     rows: 3,
-    cardWidth: 136,
-    cardHeight: 64,
+    cardWidth: 144,
+    cardHeight: 70,
     logoHeight: 36,
     gap: 14,
     rowGap: 12,
     cardRadius: 12,
+    backgroundRadius: 24,
+    backgroundBorderWidth: 0,
+    backgroundBorderColor: '#e5eaf1',
+    cardBorderWidth: 1,
     speed: 34,
     mobileRows: 3,
     mobileCardWidth: 96,
@@ -916,14 +963,72 @@ const WALL_PRESETS: Record<StylePreset, WallPresetConfig> = {
     mobileGap: 8,
     mobileRowGap: 8,
     mobileSpeed: 30,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#ffffff',
     cardColor: '#ffffff',
     borderColor: '#e5eaf1',
     highlightColor: '#54a6ff',
-    hiddenMaskColor: false,
-    maskColor: '#f8fafc',
+    hiddenMaskColor: true,
+    maskColor: 'rgba(255,255,255,0)',
     showBorder: true,
     showShadow: true,
+  },
+  showcase: {
+    rows: 2,
+    cardWidth: 192,
+    cardHeight: 96,
+    logoHeight: 52,
+    gap: 22,
+    rowGap: 18,
+    cardRadius: 14,
+    backgroundRadius: 30,
+    backgroundBorderWidth: 1,
+    backgroundBorderColor: '#e8edf4',
+    cardBorderWidth: 1,
+    speed: 34,
+    mobileRows: 2,
+    mobileCardWidth: 126,
+    mobileCardHeight: 70,
+    mobileLogoHeight: 36,
+    mobileGap: 12,
+    mobileRowGap: 12,
+    mobileSpeed: 30,
+    backgroundColor: '#ffffff',
+    cardColor: '#ffffff',
+    borderColor: '#e8edf4',
+    highlightColor: '#116dff',
+    hiddenMaskColor: true,
+    maskColor: 'rgba(255,255,255,0)',
+    showBorder: true,
+    showShadow: true,
+  },
+  'pill-cards': {
+    rows: 2,
+    cardWidth: 152,
+    cardHeight: 68,
+    logoHeight: 36,
+    gap: 16,
+    rowGap: 14,
+    cardRadius: 34,
+    backgroundRadius: 28,
+    backgroundBorderWidth: 0,
+    backgroundBorderColor: '#e8edf4',
+    cardBorderWidth: 1,
+    speed: 42,
+    mobileRows: 3,
+    mobileCardWidth: 104,
+    mobileCardHeight: 54,
+    mobileLogoHeight: 28,
+    mobileGap: 8,
+    mobileRowGap: 8,
+    mobileSpeed: 34,
+    backgroundColor: '#ffffff',
+    cardColor: '#ffffff',
+    borderColor: '#e8edf4',
+    highlightColor: '#ffbf2e',
+    hiddenMaskColor: true,
+    maskColor: 'rgba(255,255,255,0)',
+    showBorder: true,
+    showShadow: false,
   },
 };
 
