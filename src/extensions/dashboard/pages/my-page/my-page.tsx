@@ -2,16 +2,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
-  type ChangeEvent,
   type FC,
   type FormEvent,
 } from 'react';
 import { dashboard } from '@wix/dashboard';
 import { items } from '@wix/data';
-import { files } from '@wix/media';
 import { appInstances } from '@wix/app-management';
 import { Page, WixDesignSystemProvider } from '@wix/design-system';
 import { getLogoSortNumber, hasLogoSortNumber, sortLogoItems } from '../../../shared/logo-order';
@@ -20,7 +17,7 @@ import '@wix/design-system/styles.global.css';
 const COLLECTION_ID = '@zider-ink/zider-loop-logo/database';
 const HELP_URL = 'https://www.youtube.com/watch?v=GdubbsSq_yA';
 const IMAGE_COMPRESSOR_URL = 'https://squoosh.app/';
-const DASHBOARD_VERSION = '7.1.0';
+const DASHBOARD_VERSION = '9.0.0';
 const PAGE_SIZE = 10;
 
 type LogoItem = {
@@ -62,8 +59,6 @@ type LogoEditorState = {
   row?: LogoRow;
   form: LogoFormState;
 };
-
-type MediaFileDescriptor = Record<string, unknown>;
 
 const styles: Record<string, CSSProperties> = {
   pageShell: {
@@ -428,16 +423,6 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.4,
     margin: 0,
   },
-  formAlert: {
-    border: '1px solid #ffd2d2',
-    borderRadius: 6,
-    background: '#fff4f4',
-    color: '#a81919',
-    fontSize: 13,
-    lineHeight: 1.4,
-    margin: '8px 0 0',
-    padding: '8px 10px',
-  },
   modalActions: {
     gridColumn: '1 / -1',
     display: 'flex',
@@ -462,10 +447,8 @@ const DashboardPage: FC = () => {
   const [editorState, setEditorState] = useState<LogoEditorState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LogoRow | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingLogo, setIsCreatingLogo] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)), [totalCount]);
 
@@ -624,31 +607,68 @@ const DashboardPage: FC = () => {
     });
   }, [siteId]);
 
-  const openAddLogo = useCallback(() => {
-    setUploadError('');
-    setEditorState({
-      mode: 'add',
-      form: createEmptyLogoForm(totalCount + 1),
-    });
-  }, [totalCount]);
+  const openAddLogo = useCallback(async () => {
+    if (isCreatingLogo) {
+      return;
+    }
 
-  const openEditLogo = useCallback((row: LogoRow) => {
-    setUploadError('');
-    setEditorState({
-      mode: 'edit',
-      row,
-      form: createLogoFormFromRow(row),
-    });
-  }, []);
+    const pendingCmsWindow = openPendingCmsWindow();
+    setIsCreatingLogo(true);
+
+    try {
+      const resolvedSiteId = siteId ?? await resolveSiteIdAsync('openAddLogo');
+
+      if (!resolvedSiteId) {
+        closePendingCmsWindow(pendingCmsWindow);
+        dashboard.showToast({
+          message: 'Unable to open CMS because the site ID could not be resolved. Please refresh the dashboard.',
+        });
+        return;
+      }
+
+      setSiteId(resolvedSiteId);
+
+      const insertedItem = await items.insert(COLLECTION_ID, {
+        title: 'New logo',
+        description: '',
+        link: null,
+        image: null,
+        sortNumber: Math.max(totalCount + 1, 1),
+      }) as LogoItem;
+      const newItemId = insertedItem._id || '';
+
+      if (!newItemId) {
+        closePendingCmsWindow(pendingCmsWindow);
+        dashboard.showToast({
+          message: 'Logo item was created, but CMS item ID was not returned. Open Advanced CMS to finish it.',
+        });
+        await loadPage(page);
+        return;
+      }
+
+      openCmsUrl(buildCmsItemUrl(resolvedSiteId, COLLECTION_ID, newItemId), pendingCmsWindow);
+      dashboard.showToast({
+        message: 'Logo item created. Complete the image in CMS.',
+      });
+      await loadPage(page);
+    } catch (error) {
+      closePendingCmsWindow(pendingCmsWindow);
+      debugError('add logo in cms:failed', error);
+      dashboard.showToast({
+        message: 'Logo item could not be created. Please try Advanced CMS.',
+      });
+    } finally {
+      setIsCreatingLogo(false);
+    }
+  }, [isCreatingLogo, loadPage, page, siteId, totalCount]);
 
   const closeEditor = useCallback(() => {
-    if (isSaving || isUploading) {
+    if (isSaving) {
       return;
     }
 
     setEditorState(null);
-    setUploadError('');
-  }, [isSaving, isUploading]);
+  }, [isSaving]);
 
   const updateEditorForm = useCallback((patch: Partial<LogoFormState>) => {
     setEditorState((current) => current ? {
@@ -659,90 +679,6 @@ const DashboardPage: FC = () => {
       },
     } : current);
   }, []);
-
-  const chooseMedia = useCallback(async () => {
-    const openMediaManager = dashboard.openMediaManager;
-
-    if (!openMediaManager) {
-      dashboard.showToast({
-        message: 'Media Manager is not available in this Dashboard context. Try again from the Wix dashboard.',
-      });
-      return;
-    }
-
-    try {
-      setUploadError('');
-      const result = await openMediaManager({
-        category: 'image',
-        multiSelect: false,
-      });
-      const selectedItem = result?.items?.[0];
-
-      if (!selectedItem) {
-        return;
-      }
-
-      const image = resolveMediaManagerImage(selectedItem);
-
-      if (!image.value) {
-        dashboard.showToast({
-          message: 'The selected media item is missing an image URL. Please choose another image.',
-        });
-        return;
-      }
-
-      updateEditorForm({
-        image: image.value,
-        imagePreview: resolveImageUrl(image.value),
-        imageLabel: image.label,
-      });
-      setUploadError('');
-    } catch (error) {
-      debugError('choose media:failed', error);
-      dashboard.showToast({
-        message: 'Media Manager could not be opened. Please try again.',
-      });
-    }
-  }, [updateEditorForm]);
-
-  const uploadImage = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-
-    event.target.value = '';
-
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      dashboard.showToast({
-        message: 'Please upload an image file.',
-      });
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadError('');
-
-    try {
-      const image = await uploadImageToMediaManager(file);
-
-      updateEditorForm({
-        image: image.value,
-        imagePreview: resolveImageUrl(image.value),
-        imageLabel: image.label,
-      });
-      dashboard.showToast({
-        message: 'Image uploaded. It may take a few seconds for Wix Media Manager to finish processing it.',
-      });
-    } catch (error) {
-      debugError('upload image:failed', error);
-      setUploadError('Direct upload failed. Opening Wix Media Manager so you can upload or choose the logo there.');
-      await chooseMedia();
-    } finally {
-      setIsUploading(false);
-    }
-  }, [chooseMedia, updateEditorForm]);
 
   const saveLogo = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -764,24 +700,19 @@ const DashboardPage: FC = () => {
       return;
     }
 
-    if (!form.image) {
-      dashboard.showToast({
-        message: 'Please choose or upload a logo image.',
-      });
-      return;
-    }
-
     setIsSaving(true);
 
     try {
       const basePayload = copyEditableLogoItem(editorState.row?.rawItem);
       const normalizedLink = link || null;
+      const normalizedImage = form.image || null;
+      let savedCmsItemId = editorState.row?.cmsItemId || '';
       const payload: LogoItem = {
         ...basePayload,
         title,
         description,
         link: normalizedLink,
-        image: form.image,
+        image: normalizedImage,
         sortNumber: parsedSortNumber,
       };
 
@@ -791,14 +722,19 @@ const DashboardPage: FC = () => {
           _id: editorState.row.cmsItemId,
         });
       } else {
-        await items.insert(COLLECTION_ID, payload);
+        const insertedItem = await items.insert(COLLECTION_ID, payload) as LogoItem;
+        savedCmsItemId = insertedItem._id || '';
       }
 
       dashboard.showToast({
-        message: editorState.mode === 'edit' ? 'Logo updated.' : 'Logo added.',
+        message: editorState.mode === 'edit' ? 'Logo updated.' : 'Logo added. Opening CMS item.',
       });
       setEditorState(null);
       await loadPage(page);
+
+      if (editorState.mode === 'add' && savedCmsItemId) {
+        void openCmsItem(savedCmsItemId);
+      }
     } catch (error) {
       debugError('save logo:failed', error);
       dashboard.showToast({
@@ -807,7 +743,7 @@ const DashboardPage: FC = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [editorState, loadPage, page]);
+  }, [editorState, loadPage, openCmsItem, page]);
 
   const confirmDeleteLogo = useCallback(async () => {
     if (!deleteTarget?.cmsItemId) {
@@ -849,7 +785,7 @@ const DashboardPage: FC = () => {
               <header style={styles.topBar}>
                 <div>
                   <h1 style={styles.title}>Zider Logo Loop</h1>
-                  <p style={styles.subtitle}>ZIDER.ink · V{DASHBOARD_VERSION}</p>
+                  <p style={styles.subtitle}>V{DASHBOARD_VERSION}</p>
                 </div>
                 <button
                   type="button"
@@ -889,10 +825,11 @@ const DashboardPage: FC = () => {
                   <div style={styles.headerActions}>
                     <button
                       type="button"
-                      style={styles.primaryButton}
+                      style={{ ...styles.primaryButton, ...(isCreatingLogo ? styles.disabledButton : undefined) }}
                       onClick={openAddLogo}
+                      disabled={isCreatingLogo}
                     >
-                      Add Logo
+                      {isCreatingLogo ? 'Opening...' : 'Add Logo'}
                     </button>
                     <button
                       type="button"
@@ -912,7 +849,7 @@ const DashboardPage: FC = () => {
                         <th style={{ ...styles.headerCell, width: 190 }}>Name</th>
                         <th style={{ ...styles.headerCell, width: 230 }}>Logo</th>
                         <th style={styles.headerCell}>Link</th>
-                        <th style={{ ...styles.headerCell, width: 220 }}>Action</th>
+                        <th style={{ ...styles.headerCell, width: 170 }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -965,7 +902,7 @@ const DashboardPage: FC = () => {
                                   type="button"
                                   style={{ ...styles.itemButton, ...(!item.cmsItemId ? styles.disabledButton : undefined) }}
                                   disabled={!item.cmsItemId}
-                                  onClick={() => openEditLogo(item)}
+                                  onClick={() => openCmsItem(item.cmsItemId)}
                                 >
                                   Edit
                                 </button>
@@ -976,14 +913,6 @@ const DashboardPage: FC = () => {
                                   onClick={() => setDeleteTarget(item)}
                                 >
                                   Delete
-                                </button>
-                                <button
-                                  type="button"
-                                  style={{ ...styles.itemButton, ...(!item.cmsItemId ? styles.disabledButton : undefined) }}
-                                  disabled={!item.cmsItemId}
-                                  onClick={() => openCmsItem(item.cmsItemId)}
-                                >
-                                  CMS
                                 </button>
                               </div>
                             </td>
@@ -1028,7 +957,7 @@ const DashboardPage: FC = () => {
                           {editorState.mode === 'edit' ? 'Edit logo' : 'Add logo'}
                         </h2>
                         <p style={styles.modalCopy}>
-                          Choose or upload logos with Wix Media Manager. Local upload is kept as a fallback.
+                          Edit logo details here, or open Advanced CMS to choose and upload the image.
                         </p>
                       </div>
                       <button
@@ -1036,7 +965,7 @@ const DashboardPage: FC = () => {
                         style={styles.closeButton}
                         onClick={closeEditor}
                         aria-label="Close"
-                        disabled={isSaving || isUploading}
+                        disabled={isSaving}
                       >
                         x
                       </button>
@@ -1105,57 +1034,46 @@ const DashboardPage: FC = () => {
                           </div>
                           <div>
                             <div style={styles.pickerActions}>
-                              <button type="button" style={styles.secondaryButton} onClick={chooseMedia}>
-                                Media Manager
-                              </button>
-                              <button
-                                type="button"
-                                style={{ ...styles.secondaryButton, ...(isUploading ? styles.disabledButton : undefined) }}
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isUploading}
-                              >
-                                {isUploading ? 'Uploading...' : 'Local Upload'}
-                              </button>
+                              {editorState.mode === 'edit' && editorState.row?.cmsItemId ? (
+                                <button
+                                  type="button"
+                                  style={styles.secondaryButton}
+                                  onClick={() => {
+                                    void openCmsItem(editorState.row?.cmsItemId || '');
+                                  }}
+                                >
+                                  Advanced CMS
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 style={styles.itemButton}
                                 onClick={() => {
-                                  setUploadError('');
                                   updateEditorForm({ image: '', imagePreview: '', imageLabel: '' });
                                 }}
                               >
-                                Clear
+                              Clear
                               </button>
                             </div>
                             <p style={styles.formHelp}>
-                              Recommended: use Media Manager to upload or select SVG, PNG, JPG, or WebP logos.
+                              {editorState.mode === 'add'
+                                ? 'Saving creates the CMS item and opens it so you can choose or upload the image.'
+                                : 'Advanced CMS opens this logo item with the native Wix image field.'}
                             </p>
-                            {uploadError ? (
-                              <p role="alert" style={styles.formAlert}>
-                                {uploadError}
-                              </p>
-                            ) : null}
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              accept="image/*"
-                              style={{ display: 'none' }}
-                              onChange={uploadImage}
-                            />
                           </div>
                         </div>
                       </div>
 
                       <div style={styles.modalActions}>
-                        <button type="button" style={styles.secondaryButton} onClick={closeEditor} disabled={isSaving || isUploading}>
+                        <button type="button" style={styles.secondaryButton} onClick={closeEditor} disabled={isSaving}>
                           Cancel
                         </button>
                         <button
                           type="submit"
-                          style={{ ...styles.primaryButton, ...(isSaving || isUploading ? styles.disabledButton : undefined) }}
-                          disabled={isSaving || isUploading}
+                          style={{ ...styles.primaryButton, ...(isSaving ? styles.disabledButton : undefined) }}
+                          disabled={isSaving}
                         >
-                          {isSaving ? 'Saving...' : 'Save Logo'}
+                          {isSaving ? 'Saving...' : editorState.mode === 'add' ? 'Save & Open CMS' : 'Save Logo'}
                         </button>
                       </div>
                     </form>
@@ -1284,32 +1202,6 @@ function mapLogoRow(item: LogoItem): LogoRow {
   };
 }
 
-function createEmptyLogoForm(nextSortNumber: number): LogoFormState {
-  return {
-    id: '',
-    title: '',
-    description: '',
-    sortNumber: String(Math.max(nextSortNumber, 1)),
-    link: '',
-    image: '',
-    imagePreview: '',
-    imageLabel: '',
-  };
-}
-
-function createLogoFormFromRow(row: LogoRow): LogoFormState {
-  return {
-    id: row.cmsItemId,
-    title: row.title,
-    description: row.description,
-    sortNumber: row.sortNumber === null ? '' : String(row.sortNumber),
-    link: row.link,
-    image: row.image,
-    imagePreview: row.imageSrc,
-    imageLabel: getImageLabel(row.image),
-  };
-}
-
 function parseSortNumberInput(value: string): number | null {
   const trimmedValue = value.trim();
 
@@ -1336,29 +1228,6 @@ function copyEditableLogoItem(item?: LogoItem): LogoItem {
   }, {});
 }
 
-function getImageLabel(value: unknown): string {
-  if (!value) {
-    return '';
-  }
-
-  if (typeof value === 'string') {
-    return shortenText(value);
-  }
-
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    const rawLabel = record.filename || record.fileName || record.displayName || record.title || record.altText || record.url;
-
-    return typeof rawLabel === 'string' ? shortenText(rawLabel) : 'Wix media image selected';
-  }
-
-  return '';
-}
-
-function shortenText(value: string) {
-  return value.length > 90 ? `${value.slice(0, 87)}...` : value;
-}
-
 function resolveLinkUrl(value: unknown): string {
   if (!value) {
     return '';
@@ -1376,194 +1245,6 @@ function resolveLinkUrl(value: unknown): string {
   }
 
   return '';
-}
-
-function resolveMediaManagerImage(file: unknown): { value: unknown; label: string } {
-  const imageValue = extractImageValue(file);
-
-  return {
-    value: imageValue,
-    label: getMediaFileLabel(file, imageValue),
-  };
-}
-
-function extractImageValue(value: unknown): unknown {
-  if (!value) {
-    return '';
-  }
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (typeof value !== 'object') {
-    return '';
-  }
-
-  const record = value as Record<string, unknown>;
-  const media = isRecord(record.media) ? record.media : null;
-  const imageMedia = media && isRecord(media.image) ? media.image : null;
-  const vectorMedia = media && isRecord(media.vector) ? media.vector : null;
-
-  const candidates = [
-    imageMedia && isRecord(imageMedia.image) ? imageMedia.image : null,
-    vectorMedia && isRecord(vectorMedia.image) ? vectorMedia.image : null,
-    isRecord(record.image) ? record.image : null,
-    typeof record.url === 'string' ? record.url : null,
-    typeof record.src === 'string' ? record.src : null,
-    typeof record.fileUrl === 'string' ? record.fileUrl : null,
-    typeof record.imageUrl === 'string' ? record.imageUrl : null,
-    typeof record.thumbnailUrl === 'string' ? record.thumbnailUrl : null,
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    if (typeof candidate === 'string') {
-      return candidate;
-    }
-
-    if (isRecord(candidate)) {
-      const candidateUrl = candidate.url || candidate.src || candidate.fileUrl || candidate.imageUrl;
-
-      if (typeof candidateUrl === 'string') {
-        return candidate;
-      }
-    }
-  }
-
-  return '';
-}
-
-function getMediaFileLabel(fileValue: unknown, imageValue: unknown) {
-  const file = normalizeRecord(fileValue);
-  const labelCandidates = [
-    file.displayName,
-    file.filename,
-    file.fileName,
-    isRecord(imageValue) ? imageValue.filename : null,
-    isRecord(imageValue) ? imageValue.altText : null,
-    isRecord(imageValue) ? imageValue.url : null,
-    typeof imageValue === 'string' ? imageValue : null,
-  ];
-
-  const label = labelCandidates.find((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
-
-  return label ? shortenText(label) : 'Wix media image selected';
-}
-
-async function uploadImageToMediaManager(file: File): Promise<{ value: unknown; label: string }> {
-  const upload = await files.generateFileUploadUrl(file.type || 'application/octet-stream', {
-    fileName: file.name,
-    sizeInBytes: String(file.size),
-    private: false,
-    labels: ['zider-logo-loop'],
-    filePath: '/zider-logo-loop',
-  });
-
-  if (!upload.uploadUrl) {
-    throw new Error('Wix did not return a media upload URL.');
-  }
-
-  const uploadResponse = await uploadFileBytes(upload.uploadUrl, file);
-  const imageValue = extractImageValue(uploadResponse);
-
-  if (imageValue) {
-    return {
-      value: imageValue,
-      label: getMediaFileLabel(normalizeRecord(uploadResponse), imageValue),
-    };
-  }
-
-  const fileId = findUploadedFileId(uploadResponse);
-
-  if (fileId) {
-    const descriptor = await files.getFileDescriptor(fileId);
-    const descriptorImage = extractImageValue(descriptor);
-
-    if (descriptorImage) {
-      return {
-        value: descriptorImage,
-        label: getMediaFileLabel(normalizeRecord(descriptor), descriptorImage),
-      };
-    }
-  }
-
-  throw new Error('The uploaded image did not return a usable media URL.');
-}
-
-async function uploadFileBytes(uploadUrl: string, file: File): Promise<unknown> {
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-    },
-    body: file,
-  });
-
-  if (response.ok) {
-    return readResponseJson(response);
-  }
-
-  if (response.status !== 405 && response.status !== 404 && response.status !== 400) {
-    throw new Error(`Upload failed with status ${response.status}.`);
-  }
-
-  const fallbackResponse = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-    },
-    body: file,
-  });
-
-  if (!fallbackResponse.ok) {
-    throw new Error(`Upload failed with status ${fallbackResponse.status}.`);
-  }
-
-  return readResponseJson(fallbackResponse);
-}
-
-async function readResponseJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-
-  if (!text) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return {};
-  }
-}
-
-function findUploadedFileId(value: unknown): string {
-  if (!isRecord(value)) {
-    return '';
-  }
-
-  const directId = value.id || value._id || value.fileId;
-
-  if (typeof directId === 'string') {
-    return directId;
-  }
-
-  const file = isRecord(value.file) ? value.file : null;
-  const item = isRecord(value.item) ? value.item : null;
-  const nestedId = file?.id || file?._id || item?.id || item?._id;
-
-  return typeof nestedId === 'string' ? nestedId : '';
-}
-
-function normalizeRecord(value: unknown): MediaFileDescriptor {
-  return isRecord(value) ? value : {};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function extractSiteId(value?: string | null) {
@@ -1824,6 +1505,41 @@ function buildCmsCollectionUrl(siteId: string, collectionId: string) {
 
 function buildCmsItemUrl(siteId: string, collectionId: string, itemId: string) {
   return `https://manage.wix.com/dashboard/${siteId}/database/data/${encodeURIComponent(collectionId)}/${encodeURIComponent(itemId)}`;
+}
+
+function openPendingCmsWindow() {
+  const pendingWindow = window.open('about:blank', '_blank');
+
+  if (pendingWindow) {
+    try {
+      pendingWindow.opener = null;
+    } catch {
+      // Ignore browser restrictions around opener mutation.
+    }
+  }
+
+  return pendingWindow;
+}
+
+function openCmsUrl(cmsUrl: string, targetWindow: Window | null) {
+  if (targetWindow && !targetWindow.closed) {
+    targetWindow.location.href = cmsUrl;
+    return;
+  }
+
+  window.open(cmsUrl, '_blank', 'noopener,noreferrer');
+}
+
+function closePendingCmsWindow(targetWindow: Window | null) {
+  if (!targetWindow || targetWindow.closed) {
+    return;
+  }
+
+  try {
+    targetWindow.close();
+  } catch {
+    // Ignore if the browser no longer allows closing the placeholder.
+  }
 }
 
 function debugLog(message: string, payload?: unknown) {

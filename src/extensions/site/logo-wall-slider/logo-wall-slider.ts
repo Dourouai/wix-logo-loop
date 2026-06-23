@@ -483,7 +483,7 @@ export default class ZiderLogoWallSlider extends HTMLElement {
           position: relative;
           width: 100%;
           height: var(--zider-wall-card-height);
-          overflow: hidden;
+          overflow: visible;
           flex: 0 0 var(--zider-wall-card-height);
         }
 
